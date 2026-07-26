@@ -1,0 +1,12 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+data/clips/
+data/audio/
+data/output/
+logs/
+__pycache__/
+*.pyc
+.venv/
+venv/

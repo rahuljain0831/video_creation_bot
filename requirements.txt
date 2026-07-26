@@ -1,0 +1,26 @@
+# Core
+moviepy==1.0.3
+Pillow>=10.0.0
+
+# TTS
+edge-tts>=6.1.9
+# piper-tts — install separately via pip install piper-tts (platform wheels differ)
+# kokoro — install separately: pip install kokoro-onnx
+
+# AI / embeddings
+ollama>=0.3.0
+
+# LLM router (design-v3)
+litellm>=1.40.0
+groq>=0.9.0
+
+# Telegram
+python-telegram-bot>=21.0
+
+# Utilities
+python-dotenv>=1.0.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Dev / benchmark
+tqdm>=4.66.0

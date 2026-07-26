@@ -1,0 +1,56 @@
+{
+  "volume": {
+    "target_per_day": 10,
+    "max_per_day": 100
+  },
+  "video": {
+    "resolution": [1080, 1920],
+    "fps": 30,
+    "format": "mp4",
+    "min_duration_sec": 15,
+    "max_duration_sec": 20,
+    "min_scenes": 1,
+    "max_scenes": 2
+  },
+  "llm_router": {
+    "primary":        "groq/llama-3.3-70b-versatile",
+    "fallback_1":     "cerebras/llama-3.3-70b",
+    "fallback_2":     "gemini/gemini-2.0-flash",
+    "local_fallback": "ollama/llama3.1:8b",
+    "timeout_seconds": 30
+  },
+  "quote": {
+    "model_primary": "llama3.1:8b",
+    "model_fallback": "qwen3.5:2b",
+    "dedup_similarity_threshold": 0.92,
+    "embedding_model": "nomic-embed-text"
+  },
+  "tts": {
+    "provider_priority": ["edge_tts", "piper", "kokoro"],
+    "voice_piper": "en_US-lessac-medium",
+    "voice_edge": "en-US-GuyNeural"
+  },
+  "background": {
+    "library_min_clips": 20,
+    "fallback": "ken_burns_static"
+  },
+  "review": {
+    "prescreen_enabled": false,
+    "shadow_mode": false
+  },
+  "storage": {
+    "retain_rejected_days": 7,
+    "archive_posted_days": 30
+  },
+  "ollama": {
+    "base_url": "http://localhost:11434",
+    "num_gpu": 0
+  },
+  "paths": {
+    "db": "data/db/agent.db",
+    "clips": "data/clips",
+    "audio": "data/audio",
+    "output": "data/output",
+    "logs": "logs"
+  }
+}
