@@ -1,38 +1,70 @@
 {
   "volume": {
-    "target_per_day": 10,
-    "max_per_day": 100
+    "target_per_day": 1,
+    "max_per_day": 10
   },
   "video": {
     "resolution": [1080, 1920],
     "fps": 30,
     "format": "mp4",
-    "min_duration_sec": 15,
-    "max_duration_sec": 20,
-    "min_scenes": 1,
-    "max_scenes": 2
+    "min_duration_sec": 45,
+    "max_duration_sec": 90,
+    "min_scenes": 8,
+    "max_scenes": 15
   },
+  "input_mode": "menu",
+  "niches": [
+    {
+      "id": "mythology",
+      "label": "Mythology",
+      "tone": "dramatic, awe-inspiring",
+      "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition"
+    },
+    {
+      "id": "scary_stories",
+      "label": "Scary Stories",
+      "tone": "suspenseful, unsettling",
+      "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition"
+    },
+    {
+      "id": "heists",
+      "label": "Heists",
+      "tone": "tense, stylish, high-stakes",
+      "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition"
+    }
+  ],
   "llm_router": {
-    "primary":        "groq/llama-3.3-70b-versatile",
-    "fallback_1":     "cerebras/llama-3.3-70b",
-    "fallback_2":     "gemini/gemini-2.0-flash",
+    "primary":        "gemini/gemini-3.5-flash",
+    "fallback_1":     "gemini/gemini-3-flash-preview",
+    "fallback_2":     "gemini/gemini-3.1-flash-lite",
     "local_fallback": "ollama/llama3.1:8b",
-    "timeout_seconds": 30
+    "timeout_seconds": 60
   },
-  "quote": {
+  "script": {
     "model_primary": "llama3.1:8b",
     "model_fallback": "qwen3.5:2b",
-    "dedup_similarity_threshold": 0.92,
-    "embedding_model": "nomic-embed-text"
+    "grounding_required": false
   },
   "tts": {
     "provider_priority": ["edge_tts", "piper", "kokoro"],
     "voice_piper": "en_US-lessac-medium",
     "voice_edge": "en-US-GuyNeural"
   },
-  "background": {
-    "library_min_clips": 20,
-    "fallback": "ken_burns_static"
+  "image_provider": {
+    "priority": ["pollinations", "google_ai_studio", "huggingface"],
+    "huggingface": {
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "consistency_method": "fixed_seed"
+    },
+    "google_ai_studio": {
+      "model": "gemini-2.5-flash-image",
+      "model_alt": "gemini-3.1-flash-image",
+      "consistency_method": "reference_image"
+    },
+    "pollinations": {
+      "consistency_method": "fixed_seed"
+    },
+    "seed_pool_size_per_niche": 50
   },
   "review": {
     "prescreen_enabled": false,
@@ -47,10 +79,11 @@
     "num_gpu": 0
   },
   "paths": {
-    "db": "data/db/agent.db",
-    "clips": "data/clips",
-    "audio": "data/audio",
-    "output": "data/output",
-    "logs": "logs"
+    "db":      "output/db/agent.db",
+    "scripts": "output/scripts",
+    "images":  "output/images",
+    "audio":   "output/audio",
+    "video":   "output/video",
+    "logs":    "output/logs"
   }
 }

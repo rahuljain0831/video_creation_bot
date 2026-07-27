@@ -19,23 +19,22 @@ class Config:
 
     # Provider keys
     GOOGLE_AI_STUDIO_API_KEY: str = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "")
-    KLING_API_KEY: str = os.getenv("KLING_API_KEY", "")
     HF_API_TOKEN: str = os.getenv("HF_API_TOKEN", "")
-    PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
 
     # From settings.json — expose top-level sections
-    volume = _settings["volume"]
-    video = _settings["video"]
-    quote = _settings["quote"]
-    tts = _settings["tts"]
-    background = _settings["background"]
-    review = _settings["review"]
-    storage = _settings["storage"]
-    ollama = _settings["ollama"]
-    paths = _settings["paths"]
-    llm_router = _settings.get("llm_router", {})
+    volume         = _settings["volume"]
+    video          = _settings["video"]
+    tts            = _settings["tts"]
+    review         = _settings["review"]
+    storage        = _settings["storage"]
+    ollama         = _settings["ollama"]
+    paths          = _settings["paths"]
+    llm_router     = _settings.get("llm_router", {})
+    niches         = _settings.get("niches", [])
+    image_provider = _settings.get("image_provider", {})
+    script         = _settings.get("script", {})
 
 
 cfg = Config()

@@ -1,10 +1,11 @@
 """
-ffmpeg assembler — design-v3.
+ffmpeg assembler — design-v3 pivot.
 
-Assembles final 9:16 video from scene clips + narration audio using pure ffmpeg.
-No MoviePy dependency. Requires ffmpeg on PATH.
+Assembles final 9:16 video from per-scene AI images + narration audio using pure ffmpeg.
+Each image gets a Ken Burns (pan/zoom) effect, then clips are concatenated, captions burned,
+and narration audio mixed in.
 
-assemble_video(scene_clips, audio_path, output_path, narration_lines, cfg) -> str
+assemble_from_images(scene_images, audio_path, output_path, scenes, cfg) -> str
 """
 
 import logging
@@ -52,6 +53,70 @@ def _scale_clip(src: str, dest: str, width: int, height: int, fps: int) -> None:
     )
 
 
+def _ken_burns_image(
+    img_path: str,
+    dest: str,
+    duration: float,
+    width: int,
+    height: int,
+    fps: int,
+    direction: str = "zoom_in",
+) -> None:
+    """
+    Convert a static image to a video clip with Ken Burns (pan/zoom) effect.
+
+    Scales the image to 1.4× the target before applying zoompan so there are
+    spare pixels to zoom and pan without hitting the edge.
+
+    direction choices: zoom_in | zoom_out | pan_right | pan_left
+    """
+    frames = max(int(duration * fps), 1)
+    pad_w  = int(width  * 1.4)
+    pad_h  = int(height * 1.4)
+
+    max_zoom      = 1.3
+    zoom_increment = (max_zoom - 1.0) / frames
+
+    if direction == "zoom_in":
+        zoom_expr = f"min(zoom+{zoom_increment:.6f},{max_zoom})"
+        x_expr    = "iw/2-(iw/zoom/2)"
+        y_expr    = "ih/2-(ih/zoom/2)"
+    elif direction == "zoom_out":
+        zoom_expr = f"if(eq(on\\,1)\\,{max_zoom}\\,max(zoom-{zoom_increment:.6f}\\,1.0))"
+        x_expr    = "iw/2-(iw/zoom/2)"
+        y_expr    = "ih/2-(ih/zoom/2)"
+    elif direction == "pan_right":
+        zoom_expr = "1.2"
+        x_expr    = f"min(x+{(pad_w - width) / frames:.4f}\\,iw-iw/zoom)"
+        y_expr    = "ih/2-(ih/zoom/2)"
+    elif direction == "pan_left":
+        zoom_expr = "1.2"
+        x_expr    = f"max(x-{(pad_w - width) / frames:.4f}\\,0)"
+        y_expr    = "ih/2-(ih/zoom/2)"
+    else:
+        zoom_expr = f"min(zoom+{zoom_increment:.6f},{max_zoom})"
+        x_expr    = "iw/2-(iw/zoom/2)"
+        y_expr    = "ih/2-(ih/zoom/2)"
+
+    vf = (
+        f"scale={pad_w}:{pad_h}:force_original_aspect_ratio=increase,"
+        f"crop={pad_w}:{pad_h},"
+        f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}'"
+        f":d={frames}:s={width}x{height},"
+        f"fps={fps}"
+    )
+
+    _ffmpeg(
+        "-loop", "1",
+        "-i", img_path,
+        "-vf", vf,
+        "-t", str(duration),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        dest,
+    )
+
+
 def _concat_clips(clip_paths: list[str], dest: str, fps: int) -> None:
     """Concat clips via ffmpeg concat demuxer (no re-encode if same codec)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -70,6 +135,50 @@ def _concat_clips(clip_paths: list[str], dest: str, fps: int) -> None:
         os.unlink(list_path)
 
 
+def _sanitize_srt(text: str) -> str:
+    """Normalize LLM text for SRT subtitles — strip control chars, fix common Unicode."""
+    _UNICODE_MAP = {
+        "\u2014": "-",    # em dash
+        "\u2013": "-",    # en dash
+        "\u2018": "'",    # left single quote
+        "\u2019": "'",    # right single quote
+        "\u201c": '"',    # left double quote
+        "\u201d": '"',    # right double quote
+        "\u2026": "...",  # ellipsis
+    }
+    for char, replacement in _UNICODE_MAP.items():
+        text = text.replace(char, replacement)
+    # Drop non-printable control chars (keep printable Unicode — SRT supports it)
+    return "".join(c for c in text if c >= " " or c in "\n\r")
+
+
+def _seconds_to_srt_time(s: float) -> str:
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = int(s % 60)
+    ms = int((s % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+
+
+def _write_srt(scenes: list[dict], scene_durations: list[float], path: str) -> None:
+    """Write an SRT file where each subtitle = one scene's narration."""
+    lines = []
+    t = 0.0
+    idx = 1
+    for scene, dur in zip(scenes, scene_durations):
+        text = _sanitize_srt(scene.get("narration", "").strip())
+        if not text:
+            t += dur
+            continue
+        start = _seconds_to_srt_time(t)
+        end   = _seconds_to_srt_time(t + dur)
+        lines.append(f"{idx}\n{start} --> {end}\n{text}\n")
+        idx += 1
+        t += dur
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def _burn_captions(
     video_path: str,
     dest: str,
@@ -79,46 +188,47 @@ def _burn_captions(
     height: int,
 ) -> None:
     """
-    Burn narration captions into video using ffmpeg drawtext.
-    Each scene's narration is shown for its clip duration.
+    Burn narration captions into video using an SRT subtitle file.
+    Avoids the massive drawtext filter-graph that crashes ffmpeg on long videos.
     """
     if not scenes:
-        # No captions — just copy
         _ffmpeg("-i", video_path, "-c", "copy", dest)
         return
 
-    # Build drawtext filter chain — one per scene, timed with enable=
-    filters = []
-    t = 0.0
-    for i, (scene, dur) in enumerate(zip(scenes, scene_durations)):
-        narration = scene.get("narration", "").replace("'", "\\'").replace(":", "\\:")
-        if not narration:
-            t += dur
-            continue
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".srt", delete=False, encoding="utf-8"
+    ) as f:
+        srt_path = f.name
 
-        # Word wrap: max ~35 chars per line (drawtext doesn't auto-wrap)
-        lines = _wrap(narration, 35)
-        # Stack lines: each line offset by 50px
-        line_height = 52
-        base_y = height - 280  # position near bottom
+    try:
+        _write_srt(scenes, scene_durations, srt_path)
 
-        for j, line in enumerate(lines[:4]):  # max 4 lines
-            y = base_y + j * line_height
-            line_escaped = line.replace("'", "\\'").replace(":", "\\:")
-            filters.append(
-                f"drawtext=text='{line_escaped}'"
-                f":fontsize=44:fontcolor=white:borderw=3:bordercolor=black"
-                f":x=(w-text_w)/2:y={y}"
-                f":enable='between(t,{t:.3f},{t + dur:.3f})'"
+        # subtitles filter: force_style sets position near bottom, large font
+        style = (
+            "Fontsize=18,Fontname=Arial,PrimaryColour=&Hffffff,"
+            "OutlineColour=&H000000,Outline=2,Shadow=1,"
+            "Alignment=2,MarginV=40"
+        )
+        srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
+        vf = f"subtitles='{srt_escaped}':force_style='{style}'"
+
+        result = _ffmpeg(
+            "-i", video_path,
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            dest,
+            check=False,
+        )
+        if result.returncode != 0:
+            log.warning(
+                "subtitles filter failed (returncode=%d) — copying without captions. "
+                "stderr: %s",
+                result.returncode,
+                result.stderr[:300],
             )
-        t += dur
-
-    if not filters:
-        _ffmpeg("-i", video_path, "-c", "copy", dest)
-        return
-
-    vf = ",".join(filters)
-    _ffmpeg("-i", video_path, "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-crf", "23", dest)
+            _ffmpeg("-i", video_path, "-c", "copy", dest)
+    finally:
+        os.unlink(srt_path)
 
 
 def _wrap(text: str, width: int) -> list[str]:
@@ -135,22 +245,30 @@ def _wrap(text: str, width: int) -> list[str]:
     return lines
 
 
-def assemble_video(
-    scene_clips: list[str],
+_KB_DIRECTIONS = ["zoom_in", "zoom_out", "pan_right", "pan_left"]
+
+
+def assemble_from_images(
+    scene_images: list[str],
     audio_path: str,
     output_path: str,
     scenes: list[dict] | None = None,
     cfg=None,
+    scene_duration: float | None = None,
 ) -> str:
     """
-    Assemble final video from scene clips + narration audio.
+    Assemble final video from per-scene AI images + narration audio.
+
+    Each image is animated with a Ken Burns effect (alternating directions),
+    clips are concatenated, captions burned, and narration audio mixed in.
 
     Args:
-        scene_clips:  List of video file paths (one per scene). Must be non-empty.
-        audio_path:   Path to narration audio file (mp3/wav).
-        output_path:  Destination mp4 path.
-        scenes:       Scene dicts (for caption text). If None, no captions burned.
-        cfg:          Config object (optional, for resolution/fps).
+        scene_images:  List of image file paths (one per scene). Must be non-empty.
+        audio_path:    Path to narration audio file (mp3/wav).
+        output_path:   Destination mp4 path.
+        scenes:        Scene dicts with "narration" key (for captions).
+        cfg:           Config object (optional, for resolution/fps).
+        scene_duration: Seconds per scene. If None, derived from audio length / scenes.
 
     Returns:
         output_path on success.
@@ -158,6 +276,92 @@ def assemble_video(
     Raises:
         RuntimeError on ffmpeg failure.
     """
+    if not scene_images:
+        raise ValueError("assemble_from_images: scene_images is empty")
+
+    width, height = _DEFAULT_RES
+    fps = _DEFAULT_FPS
+    if cfg:
+        res = cfg.video.get("resolution", _DEFAULT_RES)
+        width, height = res[0], res[1]
+        fps = cfg.video.get("fps", _DEFAULT_FPS)
+
+    # Derive per-scene duration from audio length if not specified
+    if scene_duration is None:
+        audio_dur = _get_duration(audio_path)
+        if audio_dur > 0:
+            scene_duration = max(audio_dur / len(scene_images), 3.0)
+        else:
+            scene_duration = 5.0
+
+    out_dir = Path(output_path).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+
+        # Step 1: Ken Burns each image → video clip
+        clip_paths = []
+        for i, img_path in enumerate(scene_images):
+            direction   = _KB_DIRECTIONS[i % len(_KB_DIRECTIONS)]
+            clip_dest   = str(tmp / f"kb_{i}.mp4")
+            log.info("Ken Burns: scene %d/%d (%s) — %s", i + 1, len(scene_images), direction, img_path)
+            _ken_burns_image(img_path, clip_dest, scene_duration, width, height, fps, direction)
+            clip_paths.append(clip_dest)
+
+        # Step 2: Concat clips
+        if len(clip_paths) == 1:
+            concat_path = clip_paths[0]
+        else:
+            concat_path = str(tmp / "concat.mp4")
+            log.info("Concatenating %d clips", len(clip_paths))
+            _concat_clips(clip_paths, concat_path, fps)
+
+        # Step 3: Per-scene durations for caption timing
+        scene_durations = [_get_duration(p) for p in clip_paths]
+        total_video_dur = sum(scene_durations)
+        log.info("Total video duration: %.2fs", total_video_dur)
+
+        # Step 4: Burn captions
+        if scenes:
+            captioned_path = str(tmp / "captioned.mp4")
+            log.info("Burning captions")
+            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height)
+        else:
+            captioned_path = concat_path
+
+        # Step 5: Mix audio — trim to shorter of video/audio
+        audio_dur = _get_duration(audio_path)
+        log.info("Audio duration: %.2fs", audio_dur)
+
+        if audio_dur <= 0:
+            _ffmpeg("-i", captioned_path, "-c", "copy", output_path)
+        else:
+            min_dur = min(total_video_dur, audio_dur)
+            _ffmpeg(
+                "-i", captioned_path,
+                "-i", audio_path,
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "128k",
+                "-t", str(min_dur),
+                "-movflags", "+faststart",
+                output_path,
+            )
+
+    log.info("ffmpeg assembly complete: %s", output_path)
+    return output_path
+
+
+def assemble_video(
+    scene_clips: list[str],
+    audio_path: str,
+    output_path: str,
+    scenes: list[dict] | None = None,
+    cfg=None,
+) -> str:
+    """Legacy entry point — assembles from pre-rendered video clips (not images)."""
     if not scene_clips:
         raise ValueError("assemble_video: scene_clips is empty")
 

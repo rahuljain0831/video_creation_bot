@@ -1,14 +1,11 @@
 """
-Script generator — design-v3, Phase 1.
+Script generator — design-v3 pivot (niche-driven).
 
-Takes a one-line user prompt → produces a structured script with:
-  - tone (auto-detected)
-  - ending_type (LLM-decided)
-  - topic (inferred)
-  - 1-2 scenes, each with video_prompt + narration + mood
+Takes a niche config dict + optional story seed → produces a structured script with
+8-15 scenes, each with narration + image_prompt.
 
-GUARDRAIL: all decisions are logged to the `decisions` table BEFORE
-scene_fetcher is ever called. This prevents quota spend on bad tone reads.
+Tone is NOT auto-detected — it comes from the niche config.
+All decisions are logged to the `decisions` table BEFORE image_gen is called.
 """
 
 import json
@@ -18,9 +15,7 @@ import sqlite3
 
 log = logging.getLogger(__name__)
 
-_VALID_TONES = {"warm", "funny", "educational", "inspirational", "dramatic", "calming"}
-_VALID_ENDINGS = {"punchline", "tip", "reveal", "other"}
-_VALID_MOODS = {"calm", "energetic", "dramatic", "warm", "funny"}
+_VALID_NICHE_IDS = {"mythology", "scary_stories", "heists"}
 
 
 def _log_decision(
@@ -40,183 +35,167 @@ def _log_decision(
     log.info("Decision logged: %s = %s", decision_point, chosen_option)
 
 
-def _extract_json(text: str) -> list | dict:
-    """Extract first JSON object/array from LLM response."""
-    # Try direct parse first
+def _extract_json(text: str) -> dict:
+    """Extract first JSON object from LLM response."""
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Find JSON block
-    match = re.search(r"```(?:json)?\s*([\[\{].*?[\]\}])\s*```", text, re.DOTALL)
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1))
         except json.JSONDecodeError:
             pass
 
-    # Find raw JSON array or object
-    match = re.search(r"([\[\{].*[\]\}])", text, re.DOTALL)
+    match = re.search(r"(\{.*\})", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1))
         except json.JSONDecodeError:
             pass
 
-    raise ValueError(f"No valid JSON found in LLM response: {text[:300]}")
+    raise ValueError(f"No valid JSON object found in LLM response: {text[:300]}")
 
 
 def generate_script(
-    prompt: str,
+    niche: dict,
+    story_seed: str,
     conn: sqlite3.Connection,
     video_id: int,
     cfg=None,
 ) -> dict:
     """
-    Generate a full video script from a user prompt.
+    Generate a full video script for a niche.
 
-    Logs tone_detection, ending_choice, topic_inference decisions to DB
-    BEFORE returning scenes (the guardrail).
+    Args:
+        niche:      Niche config dict from settings.json:
+                    {"id": str, "label": str, "tone": str, "art_style_prompt_suffix": str}
+        story_seed: One-line story concept. Empty string = LLM picks within the niche.
+        conn:       SQLite connection.
+        video_id:   DB video row id.
+        cfg:        Config singleton.
 
     Returns:
         {
-            "tone": str,
-            "ending_type": str,
-            "topic": str,
+            "niche_id":    str,
+            "story_title": str,
             "scene_count": int,
             "scenes": [
                 {
-                    "video_prompt": str,   # for video-gen API
-                    "narration": str,      # for TTS
-                    "mood": str,           # for clip selection
-                    "search": str,         # alias for scene_fetcher compat
-                    "description": str,    # alias for scene_fetcher compat
+                    "narration":    str,   # what narrator says (1-2 tight sentences)
+                    "image_prompt": str,   # visual description for AI image gen
                 }
             ]
         }
+
+    Raises:
+        RuntimeError on LLM failure or bad JSON.
     """
     from llm_router import call_llm
 
-    cfg_router = cfg.llm_router if cfg else {}
-    min_scenes = cfg.video.get("min_scenes", 1) if cfg else 1
-    max_scenes = cfg.video.get("max_scenes", 2) if cfg else 2
+    cfg_router  = cfg.llm_router if cfg else {}
+    min_scenes  = cfg.video.get("min_scenes", 8)  if cfg else 8
+    max_scenes  = cfg.video.get("max_scenes", 15) if cfg else 15
 
-    # ── Single structured LLM call ────────────────────────────────────────────
-    # All decisions captured in one call, logged individually to decisions table.
-    # This is the guardrail: everything logged before scene_fetcher is called.
+    niche_id    = niche.get("id", "unknown")
+    niche_label = niche.get("label", niche_id)
+    tone        = niche.get("tone", "dramatic")
+    art_style   = niche.get("art_style_prompt_suffix", "")
+
+    story_directive = (
+        f'Base the story on: "{story_seed}"'
+        if story_seed.strip()
+        else f"Choose an engaging, original {niche_label} story."
+    )
 
     system = (
-        "You are a video script writer for short vertical social media videos (15-20 seconds). "
-        "You always respond with valid JSON only — no extra text, no markdown fences."
+        "You are a scriptwriter for short-form vertical social media story videos. "
+        "You always respond with valid JSON only — no markdown fences, no extra text."
     )
 
-    scene_count_instruction = (
-        f"Use {min_scenes} scene"
-        if min_scenes == max_scenes
-        else f"Use {min_scenes} or {max_scenes} scenes (choose based on complexity)"
-    )
+    user_prompt = f"""Write a {niche_label} story video script.
 
-    user_prompt = f"""Analyze this video prompt and write a complete script.
+Tone: {tone}
+{story_directive}
+Art style (for reference, do NOT include in narration): {art_style}
 
-Prompt: "{prompt}"
-
-Respond with this exact JSON structure:
+Respond with exactly this JSON structure:
 {{
-  "tone": "<one of: warm|funny|educational|inspirational|dramatic|calming>",
-  "tone_reasoning": "<one sentence why>",
-  "ending_type": "<one of: punchline|tip|reveal|other>",
-  "ending_reasoning": "<one sentence why>",
-  "topic": "<2-4 word topic label>",
+  "story_title": "<compelling title, max 8 words>",
   "scenes": [
     {{
-      "video_prompt": "<what the video should visually show, 1-2 sentences for AI video generation>",
-      "narration": "<what narrator says, max 2 short sentences, must fit in 7-10 seconds>",
-      "mood": "<one of: calm|energetic|dramatic|warm|funny>"
+      "narration": "<what the narrator says for this scene, 1-2 punchy sentences, max 20 words each>",
+      "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words — those are added automatically>"
     }}
   ]
 }}
 
-{scene_count_instruction}. Keep narration tight — the whole video is 15-20 seconds."""
+Use {min_scenes} to {max_scenes} scenes. Each scene is 3-8 seconds of screen time.
+Build narrative tension across scenes. Final scene should resolve or land with impact.
+Narration must be tight — total video is 45-90 seconds."""
 
-    raw, model_used = call_llm(user_prompt, system=system, cfg_router=cfg_router, temperature=0.8)
+    raw, model_used = call_llm(user_prompt, system=system, cfg_router=cfg_router, temperature=0.85)
 
-    # Parse response
     try:
         data = _extract_json(raw)
     except ValueError as e:
         raise RuntimeError(f"script_gen: JSON parse failed. model={model_used} error={e}")
 
-    # Extract + validate fields
-    tone = str(data.get("tone", "warm")).lower().strip()
-    if tone not in _VALID_TONES:
-        log.warning("Unexpected tone '%s', defaulting to 'warm'", tone)
-        tone = "warm"
+    story_title = str(data.get("story_title", f"Untitled {niche_label} Story")).strip()
+    scenes_raw  = data.get("scenes", [])
 
-    ending_type = str(data.get("ending_type", "other")).lower().strip()
-    if ending_type not in _VALID_ENDINGS:
-        log.warning("Unexpected ending_type '%s', defaulting to 'other'", ending_type)
-        ending_type = "other"
-
-    topic = str(data.get("topic", prompt[:40])).strip()
-    tone_reasoning = str(data.get("tone_reasoning", "")).strip()
-    ending_reasoning = str(data.get("ending_reasoning", "")).strip()
-
-    scenes_raw = data.get("scenes", [])
     if not scenes_raw or not isinstance(scenes_raw, list):
         raise RuntimeError(f"script_gen: no scenes in LLM response. raw={raw[:300]}")
 
-    # ── Log all decisions BEFORE returning (the guardrail) ───────────────────
-    _log_decision(conn, video_id, "tone_detection", tone, tone_reasoning, model_used)
-    _log_decision(conn, video_id, "ending_choice", ending_type, ending_reasoning, model_used)
-    _log_decision(conn, video_id, "topic_inference", topic, f"inferred from: {prompt}", model_used)
+    # ── Log decisions BEFORE returning (the guardrail) ───────────────────────
+    _log_decision(
+        conn, video_id,
+        "script_generation",
+        story_title,
+        f"niche={niche_id} seed={story_seed[:60] or 'random'} scenes_requested={min_scenes}-{max_scenes}",
+        model_used,
+    )
 
-    # ── Normalise scenes ──────────────────────────────────────────────────────
+    # ── Normalise scenes ─────────────────────────────────────────────────────
     scenes = []
     for s in scenes_raw[:max_scenes]:
-        video_prompt = str(s.get("video_prompt", "")).strip()
         narration    = str(s.get("narration", "")).strip()
-        mood         = str(s.get("mood", "calm")).lower().strip()
+        image_prompt = str(s.get("image_prompt", "")).strip()
 
-        if mood not in _VALID_MOODS:
-            mood = "calm"
-
-        if not video_prompt or not narration:
-            log.warning("Skipping incomplete scene: %s", s)
+        if not narration or not image_prompt:
+            log.warning("script_gen: skipping incomplete scene: %s", s)
             continue
 
-        scenes.append({
-            "video_prompt": video_prompt,
-            "narration":    narration,
-            "mood":         mood,
-            # scene_fetcher compat aliases
-            "search":      video_prompt[:80],
-            "description": video_prompt,
-        })
+        scenes.append({"narration": narration, "image_prompt": image_prompt})
 
     if not scenes:
-        raise RuntimeError("script_gen: all scenes were invalid after parsing")
+        raise RuntimeError("script_gen: all scenes invalid after parsing")
+
+    if len(scenes) < min_scenes:
+        log.warning(
+            "script_gen: only %d scenes returned (min=%d) — proceeding anyway",
+            len(scenes), min_scenes,
+        )
 
     scene_count = len(scenes)
 
-    # ── Update videos row with script metadata ────────────────────────────────
+    # ── Update videos row ────────────────────────────────────────────────────
     conn.execute(
-        """UPDATE videos
-           SET tone=?, ending_type=?, topic=?, scene_count=?, prompt=?
-           WHERE id=?""",
-        (tone, ending_type, topic, scene_count, prompt, video_id),
+        """UPDATE videos SET niche_id=?, scene_count=?, prompt=? WHERE id=?""",
+        (niche_id, scene_count, story_seed or f"[random {niche_label}]", video_id),
     )
     conn.commit()
 
     log.info(
-        "Script generated: video_id=%d tone=%s ending=%s topic=%s scenes=%d model=%s",
-        video_id, tone, ending_type, topic, scene_count, model_used,
+        "Script generated: video_id=%d niche=%s title=%r scenes=%d model=%s",
+        video_id, niche_id, story_title, scene_count, model_used,
     )
 
     return {
-        "tone":        tone,
-        "ending_type": ending_type,
-        "topic":       topic,
+        "niche_id":    niche_id,
+        "story_title": story_title,
         "scene_count": scene_count,
         "scenes":      scenes,
     }
