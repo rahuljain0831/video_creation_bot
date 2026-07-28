@@ -186,14 +186,28 @@ def _burn_captions(
     scene_durations: list[float],
     width: int,
     height: int,
+    cfg=None,
 ) -> None:
     """
     Burn narration captions into video using an SRT subtitle file.
     Avoids the massive drawtext filter-graph that crashes ffmpeg on long videos.
+    Caption style is read from cfg.video.caption_style if provided.
     """
     if not scenes:
         _ffmpeg("-i", video_path, "-c", "copy", dest)
         return
+
+    # Build caption style — from cfg if available, else sensible defaults
+    caption_cfg = {}
+    if cfg and hasattr(cfg, "video"):
+        caption_cfg = cfg.video.get("caption_style", {})
+    fontsize   = caption_cfg.get("fontsize", 10)
+    alpha      = caption_cfg.get("alpha", 0.5)
+    margin_pct = caption_cfg.get("margin_bottom_percent", 10)
+    # ASS format: &HBBGGRR (BGR not RGB). alpha byte prefix: 0x00=opaque, 0xFF=transparent
+    # alpha=0.5 transparency means 50% opaque → alpha byte = 0x80 (128)
+    alpha_hex = hex(int(alpha * 255))[2:].upper().zfill(2)
+    margin_v  = int(height * margin_pct / 100)
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".srt", delete=False, encoding="utf-8"
@@ -203,11 +217,11 @@ def _burn_captions(
     try:
         _write_srt(scenes, scene_durations, srt_path)
 
-        # subtitles filter: force_style sets position near bottom, large font
         style = (
-            "Fontsize=18,Fontname=Arial,PrimaryColour=&Hffffff,"
-            "OutlineColour=&H000000,Outline=2,Shadow=1,"
-            "Alignment=2,MarginV=40"
+            f"Fontsize={fontsize},Fontname=Arial,"
+            f"PrimaryColour=&H{alpha_hex}FFFFFF,"
+            f"OutlineColour=&H000000,Outline=2,Shadow=1,"
+            f"Alignment=2,MarginV={margin_v}"
         )
         srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
         vf = f"subtitles='{srt_escaped}':force_style='{style}'"
@@ -255,6 +269,7 @@ def assemble_from_images(
     scenes: list[dict] | None = None,
     cfg=None,
     scene_duration: float | None = None,
+    bg_audio_path: str | None = None,
 ) -> str:
     """
     Assemble final video from per-scene AI images + narration audio.
@@ -269,6 +284,8 @@ def assemble_from_images(
         scenes:        Scene dicts with "narration" key (for captions).
         cfg:           Config object (optional, for resolution/fps).
         scene_duration: Seconds per scene. If None, derived from audio length / scenes.
+        bg_audio_path: Optional path to background audio (mp3). Mixed at low volume
+                       under narration using ffmpeg filter_complex. Loops to video length.
 
     Returns:
         output_path on success.
@@ -326,16 +343,42 @@ def assemble_from_images(
         if scenes:
             captioned_path = str(tmp / "captioned.mp4")
             log.info("Burning captions")
-            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height)
+            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg)
         else:
             captioned_path = concat_path
 
-        # Step 5: Mix audio — trim to shorter of video/audio
+        # Step 5: Mix audio
         audio_dur = _get_duration(audio_path)
         log.info("Audio duration: %.2fs", audio_dur)
 
         if audio_dur <= 0:
             _ffmpeg("-i", captioned_path, "-c", "copy", output_path)
+
+        elif bg_audio_path and Path(bg_audio_path).exists():
+            bg_volume = 0.12
+            if cfg:
+                bg_volume = cfg.background_audio.get("volume", 0.12)
+            min_dur = min(total_video_dur, audio_dur)
+            log.info("Mixing bg audio: %s volume=%.2f", bg_audio_path, bg_volume)
+            _ffmpeg(
+                "-i", captioned_path,
+                "-i", audio_path,
+                "-i", bg_audio_path,
+                "-filter_complex",
+                (
+                    f"[2:a]volume={bg_volume},aloop=loop=-1:size=2000000000,"
+                    f"atrim=duration={min_dur}[bg];"
+                    f"[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                ),
+                "-map", "0:v:0",
+                "-map", "[aout]",
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "128k",
+                "-t", str(min_dur),
+                "-movflags", "+faststart",
+                output_path,
+            )
+
         else:
             min_dur = min(total_video_dur, audio_dur)
             _ffmpeg(
@@ -403,7 +446,7 @@ def assemble_video(
         if scenes:
             captioned_path = str(tmp / "captioned.mp4")
             log.info("Burning captions")
-            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height)
+            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg)
         else:
             captioned_path = concat_path
 
