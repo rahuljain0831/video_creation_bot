@@ -86,12 +86,12 @@
     "enabled": true,
     "provider": "direct_url",
     "urls": [
-      "https://archive.org/download/om-chanting-meditation/om-chanting-108-times.mp3",
-      "https://archive.org/download/MantraMeditation/gayatri-mantra-slow.mp3",
-      "https://archive.org/download/tibetan-singing-bowls-meditation/tibetan-bowl-ambience.mp3",
-      "https://archive.org/download/vedic-chanting-collection/shanti-mantra-chant.mp3",
-      "https://archive.org/download/RelaxingMeditationMusic/flute-meditation-ambient.mp3",
-      "https://archive.org/download/MeditationAndRelaxation/deep-om-meditation.mp3"
+      "https://archive.org/download/SriVasudevacharyasClassChantsNarayanupanishad/Chanting-NarayanUpanishad.mp3",
+      "https://archive.org/download/PurushaSuktam-VedicCreaterCreation/PurushaSuktam.mp3",
+      "https://archive.org/download/shiv-namaskarartha-mantra-monday-special-lo-fi-version/Shiv%20Namaskarartha%20Mantra%20%20Monday%20Special%20%20LoFi%20Version.mp3",
+      "https://archive.org/download/Bhaktivedanta-Narayana/01_Manah_Siksa_18Dec93.mp3",
+      "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3",
+      "https://archive.org/download/y-2mate.com-3-hours-long-tibetan-singing-bowl-meditation-chakra-healing-third-ey/y2mate.com%20-%203%20HOURS%20Long%20Tibetan%20Singing%20Bowl%20Meditation%20Chakra%20Healing%20-%20Third%20Eye%20-%20Brow%20Chakra_Y6QTdvbu0uI.mp3"
     ],
     "query": "chanting meditation",
     "volume": 0.12
