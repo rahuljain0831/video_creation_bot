@@ -34,7 +34,7 @@ def fetch_bg_audio(query: str, duration_secs: float = 0.0, cfg=None) -> str | No
         cfg:           Config singleton. Reads PIXABAY_API_KEY and paths["audio"].
 
     Returns:
-        Absolute path to cached MP3 file, or None if fetch fails for any reason.
+        Local path to cached MP3 file, or None if fetch fails for any reason.
     """
     api_key = getattr(cfg, "PIXABAY_API_KEY", "") if cfg else ""
     if not api_key:
@@ -43,7 +43,8 @@ def fetch_bg_audio(query: str, duration_secs: float = 0.0, cfg=None) -> str | No
 
     audio_base = "data/audio"
     if cfg:
-        audio_base = cfg.paths.get("audio", audio_base)
+        paths_dict = getattr(cfg, "paths", {}) or {}
+        audio_base = paths_dict.get("audio", audio_base) if isinstance(paths_dict, dict) else audio_base
     cache_dir = Path(audio_base) / "bg"
     cache_path = cache_dir / f"{_slug(query)}.mp3"
 
