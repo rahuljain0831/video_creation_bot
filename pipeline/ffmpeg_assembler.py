@@ -43,8 +43,8 @@ def _scale_clip(src: str, dest: str, width: int, height: int, fps: int) -> None:
     _ffmpeg(
         "-i", src,
         "-vf", (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},"
+            f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2,"
             f"fps={fps}"
         ),
         "-an",          # strip audio from clip
@@ -99,8 +99,8 @@ def _ken_burns_image(
         y_expr    = "ih/2-(ih/zoom/2)"
 
     vf = (
-        f"scale={pad_w}:{pad_h}:force_original_aspect_ratio=increase,"
-        f"crop={pad_w}:{pad_h},"
+        f"scale={pad_w}:{pad_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop={pad_w}:{pad_h}:(iw-{pad_w})/2:(ih-{pad_h})/2,"
         f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}'"
         f":d={frames}:s={width}x{height},"
         f"fps={fps},"
