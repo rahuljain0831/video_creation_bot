@@ -103,7 +103,8 @@ def _ken_burns_image(
         f"crop={pad_w}:{pad_h},"
         f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}'"
         f":d={frames}:s={width}x{height},"
-        f"fps={fps}"
+        f"fps={fps},"
+        f"setsar=1"
     )
 
     _ffmpeg(
@@ -353,7 +354,7 @@ def assemble_from_images(
         log.info("Audio duration: %.2fs", audio_dur)
 
         if audio_dur <= 0:
-            _ffmpeg("-i", captioned_path, "-c", "copy", output_path)
+            _ffmpeg("-i", captioned_path, "-c", "copy", "-aspect", "9:16", output_path)
 
         elif bg_audio_path and Path(bg_audio_path).exists():
             bg_volume = 0.12
@@ -376,6 +377,7 @@ def assemble_from_images(
                 "-c:v", "copy",
                 "-c:a", "aac", "-b:a", "128k",
                 "-t", str(min_dur),
+                "-aspect", "9:16",
                 "-movflags", "+faststart",
                 output_path,
             )
@@ -390,6 +392,7 @@ def assemble_from_images(
                 "-c:v", "copy",
                 "-c:a", "aac", "-b:a", "128k",
                 "-t", str(min_dur),
+                "-aspect", "9:16",
                 "-movflags", "+faststart",
                 output_path,
             )
