@@ -94,6 +94,82 @@ def _save_script(
     log.info("Script saved: %s", out)
 
 
+def _startup_quota_reset_and_retry(conn: sqlite3.Connection, cfg) -> None:
+    """
+    Run at startup before generating new videos:
+    1. Reset quota for any provider whose interval has passed.
+    2. Retry any videos stuck in 'waiting_quota' state.
+
+    This ensures quota resets even on days when no new video is generated,
+    and recovers waiting videos automatically after reset.
+    """
+    from pipeline.quota_tracker import load_quota_config, reset_quota_for_provider
+
+    quota_cfg = load_quota_config()
+    for provider in quota_cfg["providers"]:
+        reset_quota_for_provider(provider, conn)
+
+    waiting = conn.execute(
+        "SELECT id, prompt, niche_id FROM videos WHERE status='waiting_quota'"
+    ).fetchall()
+
+    if not waiting:
+        return
+
+    log.info("Retrying %d waiting_quota video(s)...", len(waiting))
+
+    from pipeline.image_gen import generate_scene_image, QuotaExhaustedError
+    import json
+
+    for video_id, prompt, niche_id in waiting:
+        # Load saved script if available
+        scripts_dir = cfg.paths["scripts"]
+        script_path = (cfg.paths["scripts"] and
+                       __import__("pathlib").Path(scripts_dir) / f"script_{video_id}.json")
+
+        if not (script_path and script_path.exists()):
+            log.warning("Retry: no saved script for video_id=%d — skipping", video_id)
+            continue
+
+        script_data = json.loads(script_path.read_text())
+        script = script_data.get("script", {})
+        niche  = script_data.get("niche", {})
+        image_seed = script_data.get("image_seed", 0)
+
+        images_dir = cfg.paths["images"]
+        scene_image_paths: list[str] = []
+        first_image_path: str | None = None
+        quota_hit = False
+
+        try:
+            for i, scene in enumerate(script.get("scenes", [])):
+                img_path = generate_scene_image(
+                    image_prompt=scene["image_prompt"],
+                    art_style_suffix=niche.get("art_style_prompt_suffix", ""),
+                    seed=image_seed,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    video_id=video_id,
+                    cfg=cfg,
+                    conn=conn,
+                    reference_image_path=first_image_path,
+                )
+                scene_image_paths.append(img_path)
+                if first_image_path is None:
+                    first_image_path = img_path
+        except QuotaExhaustedError:
+            log.info("Retry video_id=%d: still quota-capped — staying in waiting_quota", video_id)
+            quota_hit = True
+        except Exception as e:
+            log.warning("Retry video_id=%d: image gen failed: %s", video_id, e)
+            quota_hit = True
+
+        if not quota_hit and scene_image_paths:
+            conn.execute("UPDATE videos SET status='bg_ready' WHERE id=?", (video_id,))
+            conn.commit()
+            log.info("Retry video_id=%d: recovered → bg_ready", video_id)
+
+
 def _print_decisions(conn: sqlite3.Connection, video_id: int) -> None:
     rows = conn.execute(
         "SELECT decision_point, chosen_option, reasoning FROM decisions WHERE video_id=? ORDER BY id",
@@ -140,6 +216,9 @@ def main() -> None:
     conn = sqlite3.connect(cfg.paths["db"])
     conn.execute("PRAGMA foreign_keys=ON")
 
+    # ── Startup: reset quotas + retry waiting_quota videos ───────────────────
+    _startup_quota_reset_and_retry(conn, cfg)
+
     # ── Insert video row ──────────────────────────────────────────────────────
     conn.execute(
         "INSERT INTO videos (status, prompt, niche_id) VALUES ('queued', ?, ?)",
@@ -176,28 +255,36 @@ def main() -> None:
 
         # ── Step 2: Generate images ───────────────────────────────────────────
         log.info("[2/5] Generating scene images...")
-        from pipeline.image_gen import generate_scene_image
+        from pipeline.image_gen import generate_scene_image, QuotaExhaustedError
 
         images_dir = cfg.paths["images"]
         scene_image_paths: list[str] = []
         first_image_path: str | None = None
 
-        for i, scene in enumerate(script["scenes"]):
-            log.info("  Generating image %d/%d...", i + 1, script["scene_count"])
-            img_path = generate_scene_image(
-                image_prompt=scene["image_prompt"],
-                art_style_suffix=niche.get("art_style_prompt_suffix", ""),
-                seed=image_seed,
-                output_dir=images_dir,
-                scene_index=i,
-                video_id=video_id,
-                cfg=cfg,
-                reference_image_path=first_image_path,
-            )
-            scene_image_paths.append(img_path)
-            if first_image_path is None:
-                first_image_path = img_path
-            log.info("  Image %d saved: %s", i + 1, img_path)
+        try:
+            for i, scene in enumerate(script["scenes"]):
+                log.info("  Generating image %d/%d...", i + 1, script["scene_count"])
+                img_path = generate_scene_image(
+                    image_prompt=scene["image_prompt"],
+                    art_style_suffix=niche.get("art_style_prompt_suffix", ""),
+                    seed=image_seed,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    video_id=video_id,
+                    cfg=cfg,
+                    conn=conn,
+                    reference_image_path=first_image_path,
+                )
+                scene_image_paths.append(img_path)
+                if first_image_path is None:
+                    first_image_path = img_path
+                log.info("  Image %d saved: %s", i + 1, img_path)
+        except QuotaExhaustedError as e:
+            log.warning("All image providers quota-capped: %s", e)
+            conn.execute("UPDATE videos SET status='waiting_quota' WHERE id=?", (video_id,))
+            conn.commit()
+            log.info("Video %d → waiting_quota (will retry tomorrow after quota reset)", video_id)
+            return
 
         conn.execute("UPDATE videos SET status='bg_ready' WHERE id=?", (video_id,))
         conn.commit()
@@ -216,6 +303,21 @@ def main() -> None:
         )
         conn.commit()
 
+        # ── Step 3.5: Background audio ────────────────────────────────────────
+        bg_audio_path = None
+        if not args.dry_run and cfg.background_audio.get("enabled", False):
+            log.info("[3.5/5] Fetching background audio...")
+            from pipeline.audio_bg import fetch_bg_audio
+            bg_audio_path = fetch_bg_audio(
+                query=cfg.background_audio.get("query", "chanting meditation"),
+                duration_secs=audio_dur,
+                cfg=cfg,
+            )
+            if bg_audio_path:
+                log.info("Background audio: %s", bg_audio_path)
+            else:
+                log.info("Background audio unavailable — continuing without it")
+
         # ── Step 4: Assemble video ────────────────────────────────────────────
         log.info("[4/5] Assembling video...")
         from pipeline.ffmpeg_assembler import assemble_from_images
@@ -227,6 +329,7 @@ def main() -> None:
             output_path=output_path,
             scenes=script["scenes"],
             cfg=cfg,
+            bg_audio_path=bg_audio_path,
         )
         log.info("Video assembled: %s", output_path)
 
@@ -248,14 +351,11 @@ def main() -> None:
                 f"*Scenes:* {script['scene_count']}"
             )
             from review.telegram_bot import send_for_review
-            asyncio.run(
-                send_for_review(
-                    video_path=output_path,
-                    video_id=video_id,
-                    caption=caption,
-                    bot_token=cfg.TELEGRAM_BOT_TOKEN,
-                    chat_id=cfg.TELEGRAM_CHAT_ID,
-                )
+            send_for_review(
+                video_id=video_id,
+                file_path=output_path,
+                quote_text=caption,
+                conn=conn,
             )
             conn.execute("UPDATE videos SET status='sent' WHERE id=?", (video_id,))
             conn.commit()
