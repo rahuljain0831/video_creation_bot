@@ -22,6 +22,7 @@ class Config:
     HF_API_TOKEN: str = os.getenv("HF_API_TOKEN", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
+    PIXABAY_API_KEY: str = os.getenv("PIXABAY_API_KEY", "")
 
     # From settings.json — expose top-level sections
     volume         = _settings["volume"]
@@ -35,6 +36,8 @@ class Config:
     niches         = _settings.get("niches", [])
     image_provider = _settings.get("image_provider", {})
     script         = _settings.get("script", {})
+    image_gen      = _settings.get("image_gen", {})
+    background_audio = _settings.get("background_audio", {})
 
 
 cfg = Config()
