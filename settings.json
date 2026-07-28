@@ -84,7 +84,15 @@
   },
   "background_audio": {
     "enabled": true,
-    "provider": "pixabay",
+    "provider": "direct_url",
+    "urls": [
+      "https://archive.org/download/om-chanting-meditation/om-chanting-108-times.mp3",
+      "https://archive.org/download/MantraMeditation/gayatri-mantra-slow.mp3",
+      "https://archive.org/download/tibetan-singing-bowls-meditation/tibetan-bowl-ambience.mp3",
+      "https://archive.org/download/vedic-chanting-collection/shanti-mantra-chant.mp3",
+      "https://archive.org/download/RelaxingMeditationMusic/flute-meditation-ambient.mp3",
+      "https://archive.org/download/MeditationAndRelaxation/deep-om-meditation.mp3"
+    ],
     "query": "chanting meditation",
     "volume": 0.12
   },
