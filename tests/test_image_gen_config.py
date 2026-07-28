@@ -1,5 +1,4 @@
 """Test that image_gen reads resolution/steps from cfg.image_gen."""
-import types
 from unittest.mock import patch, MagicMock
 import pytest
 

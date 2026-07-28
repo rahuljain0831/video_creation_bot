@@ -204,8 +204,9 @@ def _burn_captions(
     fontsize   = caption_cfg.get("fontsize", 10)
     alpha      = caption_cfg.get("alpha", 0.5)
     margin_pct = caption_cfg.get("margin_bottom_percent", 10)
-    # ASS format: &HBBGGRR (BGR not RGB). alpha byte prefix: 0x00=opaque, 0xFF=transparent
-    # alpha=0.5 transparency means 50% opaque → alpha byte = 0x80 (128)
+    # ASS PrimaryColour format: &HAABBGGRR where AA is transparency byte.
+    # alpha config key: 0.0=fully opaque (AA=00), 1.0=fully transparent (AA=FF).
+    # e.g. alpha=0.5 → int(0.5*255)=127 (0x7F) → 50% transparent text.
     alpha_hex = hex(int(alpha * 255))[2:].upper().zfill(2)
     margin_v  = int(height * margin_pct / 100)
 
