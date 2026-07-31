@@ -4,6 +4,10 @@ LLM Router — design-v3 fallback chain.
 Online priority: Groq → Cerebras → Google AI Studio
 Local fallback:  Ollama (small model, no internet needed)
 
+Quota is checked before each provider call and logged after.
+Provider names in quota.json must match the prefix before "/" in model strings
+(e.g. "groq/llama-3.3-70b-versatile" → provider "groq").
+
 Usage:
     from llm_router import call_llm
     response = call_llm(prompt="Write a haiku about arteries.")
@@ -14,6 +18,7 @@ Standalone test:
 
 import logging
 import os
+import sqlite3
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -58,6 +63,15 @@ def _provider_key_missing(model: str) -> bool:
     return not os.getenv(env_var, "").strip()
 
 
+def _db_conn() -> sqlite3.Connection | None:
+    """Return DB connection for quota tracking, or None if config unavailable."""
+    try:
+        from config import cfg
+        return sqlite3.connect(cfg.paths["db"])
+    except Exception:
+        return None
+
+
 def call_llm(
     prompt: str,
     system: str = "You are a helpful assistant.",
@@ -66,6 +80,9 @@ def call_llm(
 ) -> tuple[str, str]:
     """
     Call LLM via the fallback chain.
+
+    Checks quota before each provider call and logs result after.
+    Provider names are derived from the model string prefix (e.g. "groq/...").
 
     Returns:
         (response_text, model_used)
@@ -94,11 +111,27 @@ def call_llm(
         {"role": "user", "content": prompt},
     ]
 
+    # Open one DB connection for all quota checks in this call
+    from pipeline.quota_tracker import check_and_log_quota
+    conn = _db_conn()
+
     last_error = None
     for model in models:
         if _provider_key_missing(model):
             log.debug("Skipping %s — API key not set", model)
             continue
+
+        provider = model.split("/")[0]
+
+        # ── Pre-call quota check ──────────────────────────────────────────────
+        if conn is not None:
+            can_proceed, reason = check_and_log_quota(provider, conn, check_only=True)
+            if not can_proceed:
+                log.info("LLM: skipping %s — %s", model, reason)
+                continue
+
+        error_code: int | None = None
+        success = False
 
         try:
             log.info("LLM call: model=%s", model)
@@ -114,11 +147,28 @@ def call_llm(
             )
             text = response.choices[0].message.content.strip()
             log.info("LLM success: model=%s chars=%d", model, len(text))
+            success = True
+
+            if conn is not None:
+                check_and_log_quota(provider, conn, success=True)
+
             return text, model
 
         except Exception as e:
             log.warning("LLM provider %s failed: %s", model, e)
             last_error = e
+            # Extract HTTP status code if available
+            if hasattr(e, "status_code"):
+                error_code = e.status_code
+            elif hasattr(e, "response") and hasattr(e.response, "status_code"):
+                error_code = e.response.status_code
+
+        finally:
+            if not success and conn is not None:
+                check_and_log_quota(provider, conn, success=False, error_code=error_code)
+
+    if conn is not None:
+        conn.close()
 
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 

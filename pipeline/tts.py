@@ -2,8 +2,10 @@
 Phase 3 — TTS synthesis.
 Provider priority: edge_tts (always available) → piper → kokoro
 Returns path to .mp3/.wav file and duration in seconds.
+Edge TTS also saves word_timings.json alongside audio for karaoke captions.
 """
 import asyncio
+import json
 import logging
 import os
 import subprocess
@@ -16,15 +18,37 @@ log = logging.getLogger(__name__)
 
 # ── edge_tts ──────────────────────────────────────────────────────────────────
 
-async def _edge_tts_async(text: str, voice: str, out_path: str) -> None:
+async def _edge_tts_async(text: str, voice: str, out_path: str) -> list[dict]:
+    """
+    Stream Edge TTS output, capturing audio bytes and word boundary events.
+    Returns list of word timing dicts: {text, offset, duration} in 100-ns units.
+    """
     import edge_tts
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(out_path)
+    communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
+
+    word_boundaries: list[dict] = []
+    audio_chunks: list[bytes] = []
+
+    async for event in communicate.stream():
+        if event["type"] == "audio":
+            audio_chunks.append(event["data"])
+        elif event["type"] == "WordBoundary":
+            word_boundaries.append({
+                "text": event["text"],
+                "offset": event["offset"],    # 100-nanosecond units
+                "duration": event["duration"],
+            })
+
+    with open(out_path, "wb") as f:
+        for chunk in audio_chunks:
+            f.write(chunk)
+
+    return word_boundaries
 
 
-def _synthesize_edge(text: str, voice: str, out_path: str) -> str:
-    asyncio.run(_edge_tts_async(text, voice, out_path))
-    return out_path
+def _synthesize_edge(text: str, voice: str, out_path: str) -> tuple[str, list[dict]]:
+    word_boundaries = asyncio.run(_edge_tts_async(text, voice, out_path))
+    return out_path, word_boundaries
 
 
 # ── piper ─────────────────────────────────────────────────────────────────────
@@ -98,6 +122,9 @@ def synthesize(
     """
     Synthesize speech for `text`. Tries providers in priority order.
     Returns (file_path, duration_seconds).
+
+    When edge_tts is used, also writes word_timings.json to output_dir
+    containing per-word offset/duration data (100-ns units) for karaoke captions.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -115,20 +142,30 @@ def synthesize(
     for provider in providers:
         try:
             if provider == "edge_tts":
-                out_path = str(out_dir / f"voice_{video_id}.mp3")
-                synthesize_fn = lambda: _synthesize_edge(text, voice_edge, out_path)
+                out_path = str(out_dir / "voice.mp3")
+                log.info("TTS provider=edge_tts video_id=%d", video_id)
+                _, word_boundaries = _synthesize_edge(text, voice_edge, out_path)
+                # Save word timings for karaoke caption rendering
+                if word_boundaries:
+                    timings_path = str(out_dir / "word_timings.json")
+                    with open(timings_path, "w", encoding="utf-8") as f:
+                        json.dump(word_boundaries, f)
+                    log.info("Word timings saved: %s (%d words)", timings_path, len(word_boundaries))
+
             elif provider == "piper":
-                out_path = str(out_dir / f"voice_{video_id}.wav")
-                synthesize_fn = lambda: _synthesize_piper(text, voice_piper, out_path)
+                out_path = str(out_dir / "voice.wav")
+                log.info("TTS provider=piper video_id=%d", video_id)
+                _synthesize_piper(text, voice_piper, out_path)
+
             elif provider == "kokoro":
-                out_path = str(out_dir / f"voice_{video_id}.wav")
-                synthesize_fn = lambda: _synthesize_kokoro(text, out_path)
+                out_path = str(out_dir / "voice.wav")
+                log.info("TTS provider=kokoro video_id=%d", video_id)
+                _synthesize_kokoro(text, out_path)
+
             else:
                 log.warning("Unknown TTS provider: %s", provider)
                 continue
 
-            log.info("TTS provider=%s video_id=%d", provider, video_id)
-            synthesize_fn()
             duration = _get_duration(out_path)
             log.info("TTS done: %s (%.2fs)", out_path, duration)
             return out_path, duration

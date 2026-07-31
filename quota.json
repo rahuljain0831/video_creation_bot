@@ -1,0 +1,42 @@
+{
+  "providers": {
+    "groq": {
+      "daily_limit": 14400,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free tier for LLM inference."
+    },
+    "cerebras": {
+      "daily_limit": 20000,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free tier for LLM inference."
+    }
+  },
+  "quota_tracking_strategy": {
+    "approach": "Reactive with pre-call checks",
+    "flow": [
+      "1. Before API call: check quota_usage(provider, today).units_used < provider.daily_limit",
+      "2. If at/over limit: skip provider, try fallback chain",
+      "3. If under limit: make API call",
+      "4. After API call (success or fail): log to quota_usage(provider, date, units_used, error_code)",
+      "5. On 429 or explicit quota error: mark provider as capped for that day"
+    ],
+    "error_handling": {
+      "429_too_many_requests": "Mark provider capped, try fallback chain",
+      "500_server_error": "Log error but do NOT count against quota (provider issue, not user limit)",
+      "timeout": "Log error but do NOT count against quota (retry eligible)"
+    },
+    "reset_logic": {
+      "daily": "At UTC 00:00 (or configured reset_time_utc), clear units_used for that provider"
+    }
+  },
+  "fallback_chains": {
+    "llm": [
+      "groq",
+      "cerebras"
+    ]
+  }
+}

@@ -7,9 +7,10 @@
     "resolution": [1080, 1920],
     "fps": 30,
     "caption_style": {
-      "fontsize": 10,
-      "alpha": 0.5,
-      "margin_bottom_percent": 10
+      "fontsize": 14,
+      "alpha": 0.0,
+      "margin_bottom_percent": 5,
+      "chunk_size": 4
     },
     "format": "mp4",
     "min_duration_sec": 45,
@@ -23,7 +24,29 @@
       "id": "mythology",
       "label": "Mythology",
       "tone": "dramatic, awe-inspiring",
-      "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition"
+      "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition",
+      "sub_types": {
+        "hindu": {
+          "label": "Hindu Mythology",
+          "tone": "divine, majestic, philosophical",
+          "art_style_prompt_suffix": "ancient Indian temple mural painting style, vibrant saffron and gold palette, intricate mandala patterns, jewel-toned robes, ultra-detailed, sharp focus, perfect anatomy, epic cinematic composition"
+        },
+        "norse": {
+          "label": "Norse Mythology",
+          "tone": "brutal, epic, fate-driven",
+          "art_style_prompt_suffix": "dark Norse saga illustration, runic stone engravings aesthetic, muted steel blues and iron grays, dramatic stormy Nordic skies, Viking age warriors and gods, cinematic composition"
+        },
+        "egypt": {
+          "label": "Egyptian Mythology",
+          "tone": "mysterious, ancient, powerful",
+          "art_style_prompt_suffix": "Egyptian hieroglyphic art style, golden desert haze, papyrus texture backdrop, lapis lazuli and gold palette, pharaonic regalia and animal-headed gods, cinematic composition"
+        },
+        "greek": {
+          "label": "Greek Mythology",
+          "tone": "heroic, tragic, passionate",
+          "art_style_prompt_suffix": "ancient Greek vase painting meets epic digital art, marble white and Aegean blue palette, classical sculpture aesthetic, dramatic Olympian lighting, togas and bronze armor, cinematic composition"
+        }
+      }
     },
     {
       "id": "scary_stories",
@@ -55,33 +78,6 @@
     "voice_piper": "en_US-lessac-medium",
     "voice_edge": "en-US-GuyNeural"
   },
-  "image_provider": {
-    "_priority_moved_to": "quota.json fallback_chains.image_generation",
-    "huggingface": {
-      "model": "black-forest-labs/FLUX.1-schnell",
-      "consistency_method": "fixed_seed"
-    },
-    "google_ai_studio": {
-      "model": "gemini-2.5-flash-image",
-      "model_alt": "gemini-3.1-flash-image",
-      "consistency_method": "reference_image"
-    },
-    "pollinations": {
-      "consistency_method": "fixed_seed"
-    },
-    "seed_pool_size_per_niche": 50
-  },
-  "image_gen": {
-    "huggingface": {
-      "width": 1024,
-      "height": 1792,
-      "num_inference_steps": 28
-    },
-    "pollinations": {
-      "width": 1080,
-      "height": 1920
-    }
-  },
   "background_audio": {
     "enabled": true,
     "provider": "direct_url",
@@ -94,7 +90,7 @@
       "https://archive.org/download/y-2mate.com-3-hours-long-tibetan-singing-bowl-meditation-chakra-healing-third-ey/y2mate.com%20-%203%20HOURS%20Long%20Tibetan%20Singing%20Bowl%20Meditation%20Chakra%20Healing%20-%20Third%20Eye%20-%20Brow%20Chakra_Y6QTdvbu0uI.mp3"
     ],
     "query": "chanting meditation",
-    "volume": 0.12
+    "volume": 0.30
   },
   "review": {
     "prescreen_enabled": false,
@@ -115,5 +111,12 @@
     "audio":   "output/audio",
     "video":   "output/video",
     "logs":    "output/logs"
+  },
+  "image_library": {
+    "vision_model": "gemini-2.0-flash",
+    "store_dir": "output/images/library",
+    "fts_min_word_length": 4,
+    "deity_prompts_path": "deity_prompts.json",
+    "fallback_to_random": true
   }
 }

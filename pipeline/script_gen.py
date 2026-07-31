@@ -5,7 +5,7 @@ Takes a niche config dict + optional story seed → produces a structured script
 8-15 scenes, each with narration + image_prompt.
 
 Tone is NOT auto-detected — it comes from the niche config.
-All decisions are logged to the `decisions` table BEFORE image_gen is called.
+All decisions are logged to the `decisions` table BEFORE image lookup runs.
 """
 
 import json
@@ -65,30 +65,24 @@ def generate_script(
     conn: sqlite3.Connection,
     video_id: int,
     cfg=None,
+    myth_type: str | None = None,
+    content_type: str = "story",
 ) -> dict:
     """
     Generate a full video script for a niche.
 
     Args:
-        niche:      Niche config dict from settings.json:
-                    {"id": str, "label": str, "tone": str, "art_style_prompt_suffix": str}
-        story_seed: One-line story concept. Empty string = LLM picks within the niche.
-        conn:       SQLite connection.
-        video_id:   DB video row id.
-        cfg:        Config singleton.
+        niche:        Niche config dict from settings.json.
+        story_seed:   One-line story concept. Empty = LLM picks within the niche.
+        conn:         SQLite connection.
+        video_id:     DB video row id.
+        cfg:          Config singleton.
+        myth_type:    For mythology niche: "hindu" | "norse" | "egypt" | "greek".
+                      Determines sub-label used in the prompt.
+        content_type: "story" | "teachings" | "facts". Controls narrative format.
 
     Returns:
-        {
-            "niche_id":    str,
-            "story_title": str,
-            "scene_count": int,
-            "scenes": [
-                {
-                    "narration":    str,   # what narrator says (1-2 tight sentences)
-                    "image_prompt": str,   # visual description for AI image gen
-                }
-            ]
-        }
+        {"niche_id", "story_title", "scene_count", "scenes": [{"narration", "image_prompt"}]}
 
     Raises:
         RuntimeError on LLM failure or bad JSON.
@@ -104,10 +98,34 @@ def generate_script(
     tone        = niche.get("tone", "dramatic")
     art_style   = niche.get("art_style_prompt_suffix", "")
 
+    # Apply mythology sub-type label if provided
+    if myth_type and niche_id == "mythology":
+        sub = niche.get("sub_types", {}).get(myth_type, {})
+        if sub:
+            niche_label = sub.get("label", niche_label)
+            tone        = sub.get("tone", tone)
+
+    # Content format directive
+    if content_type == "teachings":
+        format_note = (
+            "Format: philosophical teachings and wisdom. Each scene reveals a profound lesson "
+            "or truth from the source material. Narration speaks directly to the viewer "
+            "as if sharing ancient wisdom."
+        )
+    elif content_type == "facts":
+        format_note = (
+            "Format: fascinating facts and explanations. Each scene presents a surprising or "
+            "illuminating piece of knowledge about the mythology. Educational but gripping."
+        )
+    else:
+        format_note = (
+            "Format: dramatic narrative story with rising tension and resolution."
+        )
+
     story_directive = (
-        f'Base the story on: "{story_seed}"'
+        f'Base the content on: "{story_seed}"'
         if story_seed.strip()
-        else f"Choose an engaging, original {niche_label} story."
+        else f"Choose an engaging, original {niche_label} topic."
     )
 
     system = (
@@ -115,9 +133,10 @@ def generate_script(
         "You always respond with valid JSON only — no markdown fences, no extra text."
     )
 
-    user_prompt = f"""Write a {niche_label} story video script.
+    user_prompt = f"""Write a {niche_label} video script.
 
 Tone: {tone}
+{format_note}
 {story_directive}
 Art style (for reference, do NOT include in narration): {art_style}
 
@@ -127,7 +146,7 @@ Respond with exactly this JSON structure:
   "scenes": [
     {{
       "narration": "<what the narrator says for this scene, 1-2 punchy sentences, max 20 words each>",
-      "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words — those are added automatically>"
+      "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words (added automatically). CRITICAL anatomy rules: every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.>"
     }}
   ]
 }}

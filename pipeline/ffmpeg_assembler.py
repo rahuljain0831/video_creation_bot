@@ -8,6 +8,7 @@ and narration audio mixed in.
 assemble_from_images(scene_images, audio_path, output_path, scenes, cfg) -> str
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -161,6 +162,115 @@ def _seconds_to_srt_time(s: float) -> str:
     return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
 
 
+def _seconds_to_ass_time(s: float) -> str:
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = s % 60
+    return f"{h}:{m:02d}:{sec:05.2f}"
+
+
+def _sanitize_ass(text: str) -> str:
+    """Strip characters that break ASS format."""
+    _MAP = {
+        "\u2014": "-", "\u2013": "-", "\u2018": "'", "\u2019": "'",
+        "\u201c": '"', "\u201d": '"', "\u2026": "...",
+    }
+    for char, replacement in _MAP.items():
+        text = text.replace(char, replacement)
+    # Braces are ASS control delimiters — remove bare ones from text
+    text = text.replace("{", "").replace("}", "")
+    return text.replace("\n", " ").replace("\r", "").strip()
+
+
+def _build_ass_karaoke(
+    word_timings: list[dict],
+    chunk_size: int,
+    width: int,
+    height: int,
+    cfg=None,
+) -> str:
+    """
+    Build an ASS subtitle file with karaoke-style word highlighting.
+
+    Words grouped into chunks of `chunk_size`. For each word, one Dialogue line
+    shows the full chunk with the active word highlighted bold+yellow and the
+    rest in white. Timings come from Edge TTS word boundary events (100-ns units).
+
+    fontsize in settings is a "480p reference" value: actual ASS fontsize =
+    fontsize * (height / 480). So fontsize=10 → 40px on a 1920-tall video.
+    """
+    caption_cfg = {}
+    if cfg and hasattr(cfg, "video"):
+        caption_cfg = cfg.video.get("caption_style", {})
+    fontsize_ref = caption_cfg.get("fontsize", 10)
+    alpha        = caption_cfg.get("alpha", 0.0)
+    margin_pct   = caption_cfg.get("margin_bottom_percent", 5)
+    # Scale fontsize from 480p reference to actual video height
+    fontsize  = max(int(fontsize_ref * height / 480), 6)
+    # ASS &HAABBGGRR — alpha=0.0 → AA=00 (fully opaque)
+    alpha_hex = hex(int(alpha * 255))[2:].upper().zfill(2)
+    margin_v  = int(height * margin_pct / 100)
+
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {width}\n"
+        f"PlayResY: {height}\n"
+        "WrapStyle: 1\n"
+        "ScaledBorderAndShadow: yes\n"
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,Arial,{fontsize},"
+        f"&H{alpha_hex}FFFFFF,&H{alpha_hex}FFFF00,&H00000000,&HA0000000,"
+        f"0,0,0,0,100,100,0,0,1,2,1,2,20,20,{margin_v},1\n"
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+
+    # Group into chunks
+    chunks: list[list[dict]] = [
+        word_timings[i:i + chunk_size]
+        for i in range(0, len(word_timings), chunk_size)
+    ]
+    # Flatten to get next-chunk start for seamless end-of-chunk extension
+    flat = word_timings
+
+    events: list[str] = []
+    for chunk_idx, chunk in enumerate(chunks):
+        words = [_sanitize_ass(w["text"]) for w in chunk]
+        for word_idx, word_data in enumerate(chunk):
+            start_s = word_data["offset"] / 10_000_000
+            dur_s   = word_data["duration"] / 10_000_000
+            # Extend this word's event to next word's start (no subtitle gap)
+            flat_idx = chunk_idx * chunk_size + word_idx
+            if flat_idx + 1 < len(flat):
+                next_start = flat[flat_idx + 1]["offset"] / 10_000_000
+                end_s = max(start_s + max(dur_s, 0.05), next_start)
+            else:
+                end_s = start_s + max(dur_s, 0.3)
+
+            # Current word: bold + yellow. Others: white.
+            parts = []
+            for i, word in enumerate(words):
+                if i == word_idx:
+                    # {\c&HBBGGRR&} — yellow in BGR = &H00FFFF
+                    parts.append(r"{\c&H00FFFF&\b1}" + word + r"{\b0\c&HFFFFFF&}")
+                else:
+                    parts.append(word)
+
+            text      = " ".join(parts)
+            start_str = _seconds_to_ass_time(start_s)
+            end_str   = _seconds_to_ass_time(end_s)
+            events.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}")
+
+    return header + "\n".join(events) + "\n"
+
+
 def _write_srt(scenes: list[dict], scene_durations: list[float], path: str) -> None:
     """Write an SRT file where each subtitle = one scene's narration."""
     lines = []
@@ -188,45 +298,58 @@ def _burn_captions(
     width: int,
     height: int,
     cfg=None,
+    word_timings_path: str | None = None,
 ) -> None:
     """
-    Burn narration captions into video using an SRT subtitle file.
-    Avoids the massive drawtext filter-graph that crashes ffmpeg on long videos.
-    Caption style is read from cfg.video.caption_style if provided.
+    Burn narration captions into video.
+
+    When word_timings_path is provided (Edge TTS word boundary data), generates
+    ASS karaoke subtitles: 7-8 word chunks, active word highlighted bold+yellow.
+    Falls back to SRT (one subtitle per scene) when timings are unavailable.
     """
     if not scenes:
         _ffmpeg("-i", video_path, "-c", "copy", dest)
         return
 
-    # Build caption style — from cfg if available, else sensible defaults
     caption_cfg = {}
     if cfg and hasattr(cfg, "video"):
         caption_cfg = cfg.video.get("caption_style", {})
-    fontsize   = caption_cfg.get("fontsize", 10)
-    alpha      = caption_cfg.get("alpha", 0.5)
-    margin_pct = caption_cfg.get("margin_bottom_percent", 10)
-    # ASS PrimaryColour format: &HAABBGGRR where AA is transparency byte.
-    # alpha config key: 0.0=fully opaque (AA=00), 1.0=fully transparent (AA=FF).
-    # e.g. alpha=0.5 → int(0.5*255)=127 (0x7F) → 50% transparent text.
-    alpha_hex = hex(int(alpha * 255))[2:].upper().zfill(2)
-    margin_v  = int(height * margin_pct / 100)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".srt", delete=False, encoding="utf-8"
-    ) as f:
-        srt_path = f.name
+    use_karaoke = word_timings_path is not None and Path(word_timings_path).exists()
+
+    suffix = ".ass" if use_karaoke else ".srt"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8") as f:
+        sub_path = f.name
 
     try:
-        _write_srt(scenes, scene_durations, srt_path)
-
-        style = (
-            f"Fontsize={fontsize},Fontname=Arial,"
-            f"PrimaryColour=&H{alpha_hex}FFFFFF,"
-            f"OutlineColour=&H000000,Outline=2,Shadow=1,"
-            f"Alignment=2,MarginV={margin_v}"
-        )
-        srt_escaped = srt_path.replace("\\", "/").replace(":", "\\:")
-        vf = f"subtitles='{srt_escaped}':force_style='{style}'"
+        if use_karaoke:
+            with open(word_timings_path, encoding="utf-8") as f:
+                word_timings = json.load(f)
+            chunk_size = caption_cfg.get("chunk_size", 7)
+            ass_content = _build_ass_karaoke(word_timings, chunk_size, width, height, cfg)
+            with open(sub_path, "w", encoding="utf-8") as f:
+                f.write(ass_content)
+            log.info("Karaoke captions: %d words, chunk_size=%d", len(word_timings), chunk_size)
+            sub_escaped = sub_path.replace("\\", "/").replace(":", "\\:")
+            vf = f"subtitles='{sub_escaped}'"
+        else:
+            # SRT fallback
+            fontsize_ref = caption_cfg.get("fontsize", 10)
+            alpha        = caption_cfg.get("alpha", 0.0)
+            margin_pct   = caption_cfg.get("margin_bottom_percent", 5)
+            alpha_hex    = hex(int(alpha * 255))[2:].upper().zfill(2)
+            # Scale fontsize from 480p reference to actual video height
+            fontsize     = max(int(fontsize_ref * height / 480), 6)
+            margin_v     = int(height * margin_pct / 100)
+            _write_srt(scenes, scene_durations, sub_path)
+            style = (
+                f"Fontsize={fontsize},Fontname=Arial,"
+                f"PrimaryColour=&H{alpha_hex}FFFFFF,"
+                f"OutlineColour=&H000000,Outline=2,Shadow=1,"
+                f"Alignment=2,MarginV={margin_v}"
+            )
+            sub_escaped = sub_path.replace("\\", "/").replace(":", "\\:")
+            vf = f"subtitles='{sub_escaped}':force_style='{style}'"
 
         result = _ffmpeg(
             "-i", video_path,
@@ -237,14 +360,12 @@ def _burn_captions(
         )
         if result.returncode != 0:
             log.warning(
-                "subtitles filter failed (returncode=%d) — copying without captions. "
-                "stderr: %s",
-                result.returncode,
-                result.stderr[:300],
+                "subtitles filter failed (returncode=%d) — copying without captions. stderr: %s",
+                result.returncode, result.stderr[:300],
             )
             _ffmpeg("-i", video_path, "-c", "copy", dest)
     finally:
-        os.unlink(srt_path)
+        os.unlink(sub_path)
 
 
 def _wrap(text: str, width: int) -> list[str]:
@@ -272,6 +393,7 @@ def assemble_from_images(
     cfg=None,
     scene_duration: float | None = None,
     bg_audio_path: str | None = None,
+    word_timings_path: str | None = None,
 ) -> str:
     """
     Assemble final video from per-scene AI images + narration audio.
@@ -345,7 +467,7 @@ def assemble_from_images(
         if scenes:
             captioned_path = str(tmp / "captioned.mp4")
             log.info("Burning captions")
-            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg)
+            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg, word_timings_path)
         else:
             captioned_path = concat_path
 
@@ -450,7 +572,7 @@ def assemble_video(
         if scenes:
             captioned_path = str(tmp / "captioned.mp4")
             log.info("Burning captions")
-            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg)
+            _burn_captions(concat_path, captioned_path, scenes, scene_durations, width, height, cfg, word_timings_path)
         else:
             captioned_path = concat_path
 

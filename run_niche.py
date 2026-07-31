@@ -1,31 +1,29 @@
 """
-Niche-driven video entry point — design-v3 pivot.
+Niche-driven video entry point.
 
 Usage:
     python run_niche.py                               # interactive niche menu
     python run_niche.py mythology                     # niche id direct
     python run_niche.py mythology "story of Medusa"  # niche + story seed
-    python run_niche.py mythology --dry-run           # script only, no image gen
+    python run_niche.py mythology --dry-run           # script only, no images
     python run_niche.py mythology --no-telegram       # assemble but skip Telegram
 
 Pipeline:
     niche selection
       → script_gen: LLM writes 8-15 scene script (narration + image_prompt per scene)
-                    logs decisions to DB BEFORE image gen
-      → image_gen: per-scene AI image (HF → Google AI Studio → Pollinations)
+                    logs decisions to DB before image lookup
+      → image_library: finds best matching image per scene from user-provided library
       → tts: synthesize combined narration
       → ffmpeg_assembler: Ken Burns each image → concat → captions → audio → 9:16 mp4
       → Telegram: send for review
 """
 
 import argparse
-import asyncio
 import json
 import logging
-import random
+import re
 import sqlite3
 import sys
-import time
 from pathlib import Path
 
 logging.basicConfig(
@@ -41,7 +39,6 @@ def _select_niche(niches: list[dict], niche_arg: str | None) -> dict:
         match = next((n for n in niches if n["id"] == niche_arg), None)
         if match:
             return match
-        # Maybe they passed a number
         if niche_arg.isdigit():
             idx = int(niche_arg) - 1
             if 0 <= idx < len(niches):
@@ -49,7 +46,6 @@ def _select_niche(niches: list[dict], niche_arg: str | None) -> dict:
         log.error("Unknown niche id: %r. Available: %s", niche_arg, [n["id"] for n in niches])
         sys.exit(1)
 
-    # Interactive
     print("\nSelect a niche:")
     for i, n in enumerate(niches, 1):
         print(f"  {i}. {n['label']} — {n['tone']}")
@@ -60,22 +56,19 @@ def _select_niche(niches: list[dict], niche_arg: str | None) -> dict:
         print(f"  Enter 1-{len(niches)}")
 
 
-def _pick_seed(cfg) -> int:
-    """Pick one fixed seed for all scenes in this video run."""
-    pool_size = 50
-    try:
-        pool_size = cfg.image_provider.get("seed_pool_size_per_niche", 50)
-    except Exception:
-        pass
-    return random.randint(0, pool_size - 1)
+def _make_slug(niche_id: str, story_title: str, video_id: int) -> str:
+    """Build a human-readable run identifier: niche_story-title_id."""
+    title = re.sub(r"[^\w\s-]", "", story_title).strip()
+    title = re.sub(r"[\s_]+", "-", title).lower()[:40].strip("-")
+    return f"{niche_id}_{title}_{video_id}"
 
 
 def _save_script(
     script: dict,
     niche: dict,
     story_seed: str,
-    image_seed: int,
     video_id: int,
+    run_slug: str,
     cfg,
 ) -> None:
     """Save full script + run metadata to output/scripts/ for later reference."""
@@ -86,88 +79,20 @@ def _save_script(
         "video_id":   video_id,
         "niche":      niche,
         "story_seed": story_seed or f"[random {niche['id']}]",
-        "image_seed": image_seed,
         "script":     script,
     }
-    out = scripts_dir / f"script_{video_id}.json"
+    out = scripts_dir / f"{run_slug}.json"
     out.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
     log.info("Script saved: %s", out)
 
 
-def _startup_quota_reset_and_retry(conn: sqlite3.Connection, cfg) -> None:
-    """
-    Run at startup before generating new videos:
-    1. Reset quota for any provider whose interval has passed.
-    2. Retry any videos stuck in 'waiting_quota' state.
-
-    This ensures quota resets even on days when no new video is generated,
-    and recovers waiting videos automatically after reset.
-    """
+def _startup_quota_reset(conn: sqlite3.Connection) -> None:
+    """Reset LLM quota counters if their daily interval has passed."""
     from pipeline.quota_tracker import load_quota_config, reset_quota_for_provider
 
     quota_cfg = load_quota_config()
     for provider in quota_cfg["providers"]:
         reset_quota_for_provider(provider, conn)
-
-    waiting = conn.execute(
-        "SELECT id, prompt, niche_id FROM videos WHERE status='waiting_quota'"
-    ).fetchall()
-
-    if not waiting:
-        return
-
-    log.info("Retrying %d waiting_quota video(s)...", len(waiting))
-
-    from pipeline.image_gen import generate_scene_image, QuotaExhaustedError
-    import json
-
-    for video_id, prompt, niche_id in waiting:
-        # Load saved script if available
-        scripts_dir = cfg.paths["scripts"]
-        script_path = (cfg.paths["scripts"] and
-                       __import__("pathlib").Path(scripts_dir) / f"script_{video_id}.json")
-
-        if not (script_path and script_path.exists()):
-            log.warning("Retry: no saved script for video_id=%d — skipping", video_id)
-            continue
-
-        script_data = json.loads(script_path.read_text())
-        script = script_data.get("script", {})
-        niche  = script_data.get("niche", {})
-        image_seed = script_data.get("image_seed", 0)
-
-        images_dir = cfg.paths["images"]
-        scene_image_paths: list[str] = []
-        first_image_path: str | None = None
-        quota_hit = False
-
-        try:
-            for i, scene in enumerate(script.get("scenes", [])):
-                img_path = generate_scene_image(
-                    image_prompt=scene["image_prompt"],
-                    art_style_suffix=niche.get("art_style_prompt_suffix", ""),
-                    seed=image_seed,
-                    output_dir=images_dir,
-                    scene_index=i,
-                    video_id=video_id,
-                    cfg=cfg,
-                    conn=conn,
-                    reference_image_path=first_image_path,
-                )
-                scene_image_paths.append(img_path)
-                if first_image_path is None:
-                    first_image_path = img_path
-        except QuotaExhaustedError:
-            log.info("Retry video_id=%d: still quota-capped — staying in waiting_quota", video_id)
-            quota_hit = True
-        except Exception as e:
-            log.warning("Retry video_id=%d: image gen failed: %s", video_id, e)
-            quota_hit = True
-
-        if not quota_hit and scene_image_paths:
-            conn.execute("UPDATE videos SET status='bg_ready' WHERE id=?", (video_id,))
-            conn.commit()
-            log.info("Retry video_id=%d: recovered → bg_ready", video_id)
 
 
 def _print_decisions(conn: sqlite3.Connection, video_id: int) -> None:
@@ -186,9 +111,15 @@ def main() -> None:
     parser.add_argument("story_seed", nargs="?", default="",
                         help="One-line story seed (optional)")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Stop after script generation (no image gen, no video)")
+                        help="Stop after script generation (no images, no video)")
     parser.add_argument("--no-telegram", action="store_true",
                         help="Skip Telegram send (video still assembled)")
+    parser.add_argument("--myth-type", default=None,
+                        choices=["hindu", "norse", "egypt", "greek"],
+                        help="Mythology sub-type (only for mythology niche)")
+    parser.add_argument("--content-type", default="story",
+                        choices=["story", "teachings", "facts"],
+                        help="Content format: story (default), teachings, or facts")
     args = parser.parse_args()
 
     # ── Load config ───────────────────────────────────────────────────────────
@@ -199,14 +130,27 @@ def main() -> None:
         log.error("No niches defined in settings.json")
         sys.exit(1)
 
-    niche     = _select_niche(niches, args.niche)
-    story_seed = args.story_seed.strip()
+    niche        = _select_niche(niches, args.niche)
+    story_seed   = args.story_seed.strip()
+    myth_type    = args.myth_type if niche["id"] == "mythology" else None
+    content_type = args.content_type
+
+    # Apply mythology sub-type art style override
+    if myth_type and niche["id"] == "mythology":
+        sub = niche.get("sub_types", {}).get(myth_type)
+        if sub:
+            niche = dict(niche)
+            niche["art_style_prompt_suffix"] = sub["art_style_prompt_suffix"]
+            niche["tone"]  = sub.get("tone", niche["tone"])
+            niche["label"] = sub.get("label", niche["label"])
 
     if not story_seed and not args.niche:
         story_seed = input(f"Story seed for {niche['label']} (or Enter for random): ").strip()
 
     log.info("=" * 60)
     log.info("Niche: %s  |  Tone: %s", niche["label"], niche["tone"])
+    if myth_type:
+        log.info("Myth type: %s  |  Content: %s", myth_type, content_type)
     log.info("Seed:  %s", story_seed or "[random]")
     log.info("=" * 60)
 
@@ -216,8 +160,8 @@ def main() -> None:
     conn = sqlite3.connect(cfg.paths["db"])
     conn.execute("PRAGMA foreign_keys=ON")
 
-    # ── Startup: reset quotas + retry waiting_quota videos ───────────────────
-    _startup_quota_reset_and_retry(conn, cfg)
+    # ── Startup: reset LLM quotas ─────────────────────────────────────────────
+    _startup_quota_reset(conn)
 
     # ── Insert video row ──────────────────────────────────────────────────────
     conn.execute(
@@ -228,23 +172,24 @@ def main() -> None:
     video_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     log.info("Created video row: id=%d", video_id)
 
-    # One fixed seed for style consistency across all scenes in this video
-    image_seed = _pick_seed(cfg)
-    log.info("Image seed: %d", image_seed)
-
     try:
         # ── Step 1: Generate script ───────────────────────────────────────────
         log.info("[1/5] Generating script...")
         from pipeline.script_gen import generate_script
-        script = generate_script(story_seed=story_seed, niche=niche, conn=conn, video_id=video_id, cfg=cfg)
+        script = generate_script(
+            story_seed=story_seed, niche=niche, conn=conn,
+            video_id=video_id, cfg=cfg, myth_type=myth_type, content_type=content_type,
+        )
 
         log.info("Script: title=%r scenes=%d", script["story_title"], script["scene_count"])
         for i, scene in enumerate(script["scenes"], 1):
             log.info("  Scene %d narration : %s", i, scene["narration"])
             log.info("  Scene %d image_prompt: %s", i, scene["image_prompt"][:80])
 
-        # Save script JSON regardless of dry-run
-        _save_script(script, niche, story_seed, image_seed, video_id, cfg)
+        run_slug = _make_slug(niche["id"], script["story_title"], video_id)
+        log.info("Run slug: %s", run_slug)
+
+        _save_script(script, niche, story_seed, video_id, run_slug, cfg)
 
         if args.dry_run:
             log.info("--dry-run: stopping after script. Decisions logged to DB.")
@@ -253,38 +198,48 @@ def main() -> None:
             conn.commit()
             return
 
-        # ── Step 2: Generate images ───────────────────────────────────────────
-        log.info("[2/5] Generating scene images...")
-        from pipeline.image_gen import generate_scene_image, QuotaExhaustedError
+        # ── Step 2: Fetch images from library ─────────────────────────────────
+        log.info("[2/5] Fetching scene images from library...")
+        from pipeline.image_library import get_library_image, LibraryEmptyError
+        from pipeline.deity_map import find_best_image_for_scene
 
-        images_dir = cfg.paths["images"]
+        images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths: list[str] = []
-        first_image_path: str | None = None
 
-        try:
-            for i, scene in enumerate(script["scenes"]):
-                log.info("  Generating image %d/%d...", i + 1, script["scene_count"])
-                img_path = generate_scene_image(
-                    image_prompt=scene["image_prompt"],
-                    art_style_suffix=niche.get("art_style_prompt_suffix", ""),
-                    seed=image_seed,
-                    output_dir=images_dir,
-                    scene_index=i,
-                    video_id=video_id,
-                    cfg=cfg,
-                    conn=conn,
-                    reference_image_path=first_image_path,
-                )
-                scene_image_paths.append(img_path)
-                if first_image_path is None:
-                    first_image_path = img_path
-                log.info("  Image %d saved: %s", i + 1, img_path)
-        except QuotaExhaustedError as e:
-            log.warning("All image providers quota-capped: %s", e)
-            conn.execute("UPDATE videos SET status='waiting_quota' WHERE id=?", (video_id,))
-            conn.commit()
-            log.info("Video %d → waiting_quota (will retry tomorrow after quota reset)", video_id)
-            return
+        for i, scene in enumerate(script["scenes"]):
+            log.info("  Library lookup %d/%d...", i + 1, script["scene_count"])
+            try:
+                img_row = find_best_image_for_scene(scene["image_prompt"], niche, conn, cfg)
+                if img_row:
+                    # Copy/link the library image to the run output dir
+                    img_path = get_library_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        conn=conn,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        video_id=video_id,
+                        cfg=cfg,
+                        preselected_row=img_row,
+                    )
+                else:
+                    img_path = get_library_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        conn=conn,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        video_id=video_id,
+                        cfg=cfg,
+                    )
+            except LibraryEmptyError as e:
+                log.error("Image library empty for scene %d: %s", i, e)
+                log.error("Run: python ingest_library.py --folder <path_to_images>")
+                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+                conn.commit()
+                return
+            scene_image_paths.append(img_path)
+            log.info("  Scene %d → %s", i + 1, img_path)
 
         conn.execute("UPDATE videos SET status='bg_ready' WHERE id=?", (video_id,))
         conn.commit()
@@ -294,8 +249,11 @@ def main() -> None:
         from pipeline.tts import synthesize
 
         full_narration = "  ".join(s["narration"] for s in script["scenes"])
-        audio_path, audio_dur = synthesize(full_narration, cfg.paths["audio"], video_id, cfg=cfg)
+        audio_dir = str(Path(cfg.paths["audio"]) / run_slug)
+        audio_path, audio_dur = synthesize(full_narration, audio_dir, video_id, cfg=cfg)
         log.info("TTS done: %s (%.2fs)", audio_path, audio_dur)
+
+        word_timings_path = str(Path(audio_dir) / "word_timings.json")
 
         conn.execute(
             "UPDATE videos SET status='voice_ready', voice_provider='edge_tts' WHERE id=?",
@@ -305,7 +263,7 @@ def main() -> None:
 
         # ── Step 3.5: Background audio ────────────────────────────────────────
         bg_audio_path = None
-        if not args.dry_run and cfg.background_audio.get("enabled", False):
+        if cfg.background_audio.get("enabled", False):
             log.info("[3.5/5] Fetching background audio...")
             from pipeline.audio_bg import fetch_bg_audio
             bg_audio_path = fetch_bg_audio(
@@ -322,7 +280,7 @@ def main() -> None:
         log.info("[4/5] Assembling video...")
         from pipeline.ffmpeg_assembler import assemble_from_images
 
-        output_path = str(Path(cfg.paths["video"]) / f"video_{video_id}_{int(time.time())}.mp4")
+        output_path = str(Path(cfg.paths["video"]) / f"{run_slug}.mp4")
         assemble_from_images(
             scene_images=scene_image_paths,
             audio_path=audio_path,
@@ -330,6 +288,7 @@ def main() -> None:
             scenes=script["scenes"],
             cfg=cfg,
             bg_audio_path=bg_audio_path,
+            word_timings_path=word_timings_path,
         )
         log.info("Video assembled: %s", output_path)
 

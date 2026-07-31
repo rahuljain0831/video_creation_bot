@@ -19,10 +19,8 @@ class Config:
 
     # Provider keys
     GOOGLE_AI_STUDIO_API_KEY: str = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "")
-    HF_API_TOKEN: str = os.getenv("HF_API_TOKEN", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
-    PIXABAY_API_KEY: str = os.getenv("PIXABAY_API_KEY", "")
 
     # From settings.json — expose top-level sections
     volume         = _settings["volume"]
@@ -34,10 +32,9 @@ class Config:
     paths          = _settings["paths"]
     llm_router     = _settings.get("llm_router", {})
     niches         = _settings.get("niches", [])
-    image_provider = _settings.get("image_provider", {})
-    script         = _settings.get("script", {})
-    image_gen      = _settings.get("image_gen", {})
+    script           = _settings.get("script", {})
     background_audio = _settings.get("background_audio", {})
+    image_library    = _settings.get("image_library", {})
 
 
 cfg = Config()

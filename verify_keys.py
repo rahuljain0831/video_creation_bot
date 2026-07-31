@@ -34,23 +34,7 @@ except Exception as e:
     check("Telegram bot", False, str(e))
 
 
-# ── Hugging Face ──────────────────────────────────────────────────────────────
-hf_token = os.getenv("HF_API_TOKEN", "")
-try:
-    r = requests.get(
-        "https://huggingface.co/api/whoami-v2",
-        headers={"Authorization": f"Bearer {hf_token}"},
-        timeout=10,
-    )
-    if r.status_code == 200:
-        check("HuggingFace token", True, r.json().get("name", "authenticated"))
-    else:
-        check("HuggingFace token", False, f"HTTP {r.status_code}")
-except Exception as e:
-    check("HuggingFace token", False, str(e))
-
-
-# ── Google AI Studio (Gemini) ─────────────────────────────────────────────────
+# ── Google AI Studio (Gemini — used for Vision analysis in ingest) ────────────
 google_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "")
 try:
     r = requests.get(
@@ -59,32 +43,49 @@ try:
     )
     if r.status_code == 200:
         models = r.json().get("models", [])
-        check("Google AI Studio", True, f"{len(models)} models accessible")
+        check("Google AI Studio (Vision/LLM)", True, f"{len(models)} models accessible")
     else:
-        check("Google AI Studio", False, f"HTTP {r.status_code} — {r.json().get('error', {}).get('message', '')}")
+        check("Google AI Studio (Vision/LLM)", False,
+              f"HTTP {r.status_code} — {r.json().get('error', {}).get('message', '')}")
 except Exception as e:
-    check("Google AI Studio", False, str(e))
+    check("Google AI Studio (Vision/LLM)", False, str(e))
 
 
-# ── Kling AI ──────────────────────────────────────────────────────────────────
-# Kling uses JWT bearer — just check if the endpoint responds to auth
-kling_key = os.getenv("KLING_API_KEY", "")
+# ── Groq (LLM script generation) ──────────────────────────────────────────────
+groq_key = os.getenv("GROQ_API_KEY", "")
 try:
     r = requests.get(
-        "https://api.klingai.com/v1/videos/text2video",
-        headers={"Authorization": f"Bearer {kling_key}"},
+        "https://api.groq.com/openai/v1/models",
+        headers={"Authorization": f"Bearer {groq_key}"},
         timeout=10,
     )
-    # 401 = bad key, 200/405/422 = key accepted
-    if r.status_code == 401:
-        check("Kling AI", False, "Invalid API key")
+    if r.status_code == 200:
+        models = r.json().get("data", [])
+        check("Groq (LLM)", True, f"{len(models)} models accessible")
     else:
-        check("Kling AI", True, f"HTTP {r.status_code} (key accepted)")
+        check("Groq (LLM)", False, f"HTTP {r.status_code}")
 except Exception as e:
-    check("Kling AI", False, str(e))
+    check("Groq (LLM)", False, str(e))
 
 
-# ── Ollama (local) ────────────────────────────────────────────────────────────
+# ── Cerebras (LLM fallback) ───────────────────────────────────────────────────
+cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
+try:
+    r = requests.get(
+        "https://api.cerebras.ai/v1/models",
+        headers={"Authorization": f"Bearer {cerebras_key}"},
+        timeout=10,
+    )
+    if r.status_code == 200:
+        models = r.json().get("data", [])
+        check("Cerebras (LLM)", True, f"{len(models)} models accessible")
+    else:
+        check("Cerebras (LLM)", False, f"HTTP {r.status_code}")
+except Exception as e:
+    check("Cerebras (LLM)", False, str(e))
+
+
+# ── Ollama (local LLM) ────────────────────────────────────────────────────────
 with open("settings.json") as f:
     settings = json.load(f)
 ollama_url = settings["ollama"]["base_url"]
