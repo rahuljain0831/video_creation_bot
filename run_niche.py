@@ -202,39 +202,56 @@ def main() -> None:
         log.info("[2/5] Fetching scene images from library...")
         from pipeline.image_library import get_library_image, LibraryEmptyError
         from pipeline.deity_map import find_best_image_for_scene
+        from pipeline.pexels_library import get_pexels_image, PexelsError
 
         images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths: list[str] = []
+        _use_pexels = niche.get("image_source", "library") == "pexels"
 
         for i, scene in enumerate(script["scenes"]):
-            log.info("  Library lookup %d/%d...", i + 1, script["scene_count"])
+            log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
             try:
-                img_row = find_best_image_for_scene(scene["image_prompt"], niche, conn, cfg)
-                if img_row:
-                    # Copy/link the library image to the run output dir
-                    img_path = get_library_image(
+                if _use_pexels:
+                    fallback_q = cfg.pexels_library.get("fallback_query", "abstract cinematic background")
+                    img_path = get_pexels_image(
                         image_prompt=scene["image_prompt"],
                         niche=niche,
-                        conn=conn,
                         output_dir=images_dir,
                         scene_index=i,
-                        video_id=video_id,
-                        cfg=cfg,
-                        preselected_row=img_row,
+                        fallback_query=fallback_q,
                     )
                 else:
-                    img_path = get_library_image(
-                        image_prompt=scene["image_prompt"],
-                        niche=niche,
-                        conn=conn,
-                        output_dir=images_dir,
-                        scene_index=i,
-                        video_id=video_id,
-                        cfg=cfg,
-                    )
+                    img_row = find_best_image_for_scene(scene["image_prompt"], niche, conn, cfg)
+                    if img_row:
+                        # Copy/link the library image to the run output dir
+                        img_path = get_library_image(
+                            image_prompt=scene["image_prompt"],
+                            niche=niche,
+                            conn=conn,
+                            output_dir=images_dir,
+                            scene_index=i,
+                            video_id=video_id,
+                            cfg=cfg,
+                            preselected_row=img_row,
+                        )
+                    else:
+                        img_path = get_library_image(
+                            image_prompt=scene["image_prompt"],
+                            niche=niche,
+                            conn=conn,
+                            output_dir=images_dir,
+                            scene_index=i,
+                            video_id=video_id,
+                            cfg=cfg,
+                        )
             except LibraryEmptyError as e:
                 log.error("Image library empty for scene %d: %s", i, e)
                 log.error("Run: python ingest_library.py --folder <path_to_images>")
+                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+                conn.commit()
+                return
+            except PexelsError as e:
+                log.error("Pexels image fetch failed for scene %d: %s", i, e)
                 conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
                 conn.commit()
                 return
@@ -254,6 +271,10 @@ def main() -> None:
         log.info("TTS done: %s (%.2fs)", audio_path, audio_dur)
 
         word_timings_path = str(Path(audio_dir) / "word_timings.json")
+
+        from pipeline.scene_timing import compute_scene_durations
+        scene_durations = compute_scene_durations(script["scenes"], word_timings_path, audio_dur)
+        log.info("Scene durations: %s", [f"{d:.2f}s" for d in scene_durations])
 
         conn.execute(
             "UPDATE videos SET status='voice_ready', voice_provider='edge_tts' WHERE id=?",
@@ -289,6 +310,7 @@ def main() -> None:
             cfg=cfg,
             bg_audio_path=bg_audio_path,
             word_timings_path=word_timings_path,
+            scene_durations=scene_durations,
         )
         log.info("Video assembled: %s", output_path)
 

@@ -21,6 +21,14 @@ class Config:
     GOOGLE_AI_STUDIO_API_KEY: str = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
+    PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
+    KLING_API_KEY: str = os.getenv("KLING_API_KEY", "")
+    HF_API_TOKEN: str = os.getenv("HF_API_TOKEN", "")
+
+    @staticmethod
+    def get_key(name: str) -> str:
+        """Fetch any provider key from .env by name, e.g. cfg.get_key('NEW_PROVIDER_API_KEY')."""
+        return os.getenv(name, "")
 
     # From settings.json — expose top-level sections
     volume         = _settings["volume"]
@@ -35,6 +43,7 @@ class Config:
     script           = _settings.get("script", {})
     background_audio = _settings.get("background_audio", {})
     image_library    = _settings.get("image_library", {})
+    pexels_library   = _settings.get("pexels_library", {})
 
 
 cfg = Config()

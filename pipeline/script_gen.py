@@ -15,7 +15,10 @@ import sqlite3
 
 log = logging.getLogger(__name__)
 
-_VALID_NICHE_IDS = {"mythology", "scary_stories", "heists"}
+_VALID_NICHE_IDS = {
+    "mythology", "scary_stories", "heists",
+    "space_science", "ai_tech_tools", "finance_facts",
+}
 
 
 def _log_decision(
@@ -97,6 +100,8 @@ def generate_script(
     niche_label = niche.get("label", niche_id)
     tone        = niche.get("tone", "dramatic")
     art_style   = niche.get("art_style_prompt_suffix", "")
+    default_rules = "Specify the main subject prominently in the foreground."
+    image_prompt_rules = niche.get("image_prompt_rules", default_rules)
 
     # Apply mythology sub-type label if provided
     if myth_type and niche_id == "mythology":
@@ -146,7 +151,7 @@ Respond with exactly this JSON structure:
   "scenes": [
     {{
       "narration": "<what the narrator says for this scene, 1-2 punchy sentences, max 20 words each>",
-      "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words (added automatically). CRITICAL anatomy rules: every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.>"
+      "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words (added automatically). {image_prompt_rules}>"
     }}
   ]
 }}

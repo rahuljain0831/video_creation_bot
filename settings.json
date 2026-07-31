@@ -23,8 +23,10 @@
     {
       "id": "mythology",
       "label": "Mythology",
+      "image_source": "library",
       "tone": "dramatic, awe-inspiring",
       "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition",
+      "image_prompt_rules": "Every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.",
       "sub_types": {
         "hindu": {
           "label": "Hindu Mythology",
@@ -52,13 +54,39 @@
       "id": "scary_stories",
       "label": "Scary Stories",
       "tone": "suspenseful, unsettling",
-      "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition"
+      "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition",
+      "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground."
     },
     {
       "id": "heists",
       "label": "Heists",
       "tone": "tense, stylish, high-stakes",
-      "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition"
+      "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition",
+      "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground."
+    },
+    {
+      "id": "space_science",
+      "label": "Space & Science",
+      "tone": "awe-inspiring, curious, grand",
+      "art_style_prompt_suffix": "cosmic nebula deep space photography cinematic",
+      "image_source": "pexels",
+      "image_prompt_rules": "No humans. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground."
+    },
+    {
+      "id": "ai_tech_tools",
+      "label": "AI & Tech Tools",
+      "tone": "sharp, practical, forward-looking",
+      "art_style_prompt_suffix": "modern technology screen interface minimal cinematic",
+      "image_source": "pexels",
+      "image_prompt_rules": "No humans. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground."
+    },
+    {
+      "id": "finance_facts",
+      "label": "Finance Facts",
+      "tone": "confident, clear, high-value",
+      "art_style_prompt_suffix": "finance business city skyline charts cinematic",
+      "image_source": "pexels",
+      "image_prompt_rules": "No humans. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground."
     }
   ],
   "llm_router": {
@@ -118,5 +146,10 @@
     "fts_min_word_length": 4,
     "deity_prompts_path": "deity_prompts.json",
     "fallback_to_random": true
+  },
+  "pexels_library": {
+    "orientation": "portrait",
+    "per_page": 5,
+    "fallback_query": "abstract cinematic background"
   }
 }

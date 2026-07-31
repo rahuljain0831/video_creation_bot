@@ -54,6 +54,33 @@ def _scale_clip(src: str, dest: str, width: int, height: int, fps: int) -> None:
     )
 
 
+def _fit_clip_to_duration(
+    src: str, dest: str, target_duration: float, width: int, height: int, fps: int,
+) -> None:
+    """Scale+crop clip to target resolution AND force it to exactly target_duration.
+    Trims if the source clip is longer; loops if shorter."""
+    src_dur = _get_duration(src)
+    vf = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2,"
+        f"fps={fps}"
+    )
+    if src_dur >= target_duration or src_dur <= 0:
+        _ffmpeg(
+            "-i", src, "-t", str(target_duration),
+            "-vf", vf, "-an",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            dest,
+        )
+    else:
+        _ffmpeg(
+            "-stream_loop", "-1", "-i", src, "-t", str(target_duration),
+            "-vf", vf, "-an",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            dest,
+        )
+
+
 def _ken_burns_image(
     img_path: str,
     dest: str,
@@ -394,6 +421,7 @@ def assemble_from_images(
     scene_duration: float | None = None,
     bg_audio_path: str | None = None,
     word_timings_path: str | None = None,
+    scene_durations: list[float] | None = None,
 ) -> str:
     """
     Assemble final video from per-scene AI images + narration audio.
@@ -446,8 +474,9 @@ def assemble_from_images(
         for i, img_path in enumerate(scene_images):
             direction   = _KB_DIRECTIONS[i % len(_KB_DIRECTIONS)]
             clip_dest   = str(tmp / f"kb_{i}.mp4")
+            dur = scene_durations[i] if scene_durations else scene_duration
             log.info("Ken Burns: scene %d/%d (%s) — %s", i + 1, len(scene_images), direction, img_path)
-            _ken_burns_image(img_path, clip_dest, scene_duration, width, height, fps, direction)
+            _ken_burns_image(img_path, clip_dest, dur, width, height, fps, direction)
             clip_paths.append(clip_dest)
 
         # Step 2: Concat clips
@@ -529,6 +558,8 @@ def assemble_video(
     output_path: str,
     scenes: list[dict] | None = None,
     cfg=None,
+    word_timings_path: str | None = None,
+    scene_durations: list[float] | None = None,
 ) -> str:
     """Legacy entry point — assembles from pre-rendered video clips (not images)."""
     if not scene_clips:
@@ -541,18 +572,22 @@ def assemble_video(
         width, height = res[0], res[1]
         fps = cfg.video.get("fps", _DEFAULT_FPS)
 
+    if scene_durations is None:
+        audio_dur = _get_duration(audio_path)
+        scene_durations = [max(audio_dur / len(scene_clips), 3.0)] * len(scene_clips)
+
     out_dir = Path(output_path).parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
 
-        # Step 1: Scale all clips to target resolution
+        # Step 1: Scale+trim/loop all clips to target resolution and duration
         scaled = []
         for i, clip_path in enumerate(scene_clips):
             scaled_path = str(tmp / f"scaled_{i}.mp4")
-            log.info("Scaling clip %d/%d: %s", i + 1, len(scene_clips), clip_path)
-            _scale_clip(clip_path, scaled_path, width, height, fps)
+            log.info("Fitting clip %d/%d: %s", i + 1, len(scene_clips), clip_path)
+            _fit_clip_to_duration(clip_path, scaled_path, scene_durations[i], width, height, fps)
             scaled.append(scaled_path)
 
         # Step 2: Concat (or use single clip directly)
@@ -563,12 +598,10 @@ def assemble_video(
             log.info("Concatenating %d clips", len(scaled))
             _concat_clips(scaled, concat_path, fps)
 
-        # Step 3: Get per-scene durations (for caption timing)
-        scene_durations = [_get_duration(p) for p in scaled]
         total_video_dur = sum(scene_durations)
         log.info("Total video duration: %.2fs", total_video_dur)
 
-        # Step 4: Burn captions
+        # Step 3: Burn captions
         if scenes:
             captioned_path = str(tmp / "captioned.mp4")
             log.info("Burning captions")
@@ -576,7 +609,7 @@ def assemble_video(
         else:
             captioned_path = concat_path
 
-        # Step 5: Mix audio — pad/trim audio to match video length
+        # Step 4: Mix audio — pad/trim audio to match video length
         audio_dur = _get_duration(audio_path)
         log.info("Audio duration: %.2fs", audio_dur)
 
@@ -585,7 +618,6 @@ def assemble_video(
             _ffmpeg("-i", captioned_path, "-c", "copy", output_path)
         else:
             # Trim video or audio to match shorter one
-            max_dur = max(total_video_dur, audio_dur)
             min_dur = min(total_video_dur, audio_dur)
 
             _ffmpeg(
