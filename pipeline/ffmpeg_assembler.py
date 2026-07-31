@@ -11,6 +11,7 @@ assemble_from_images(scene_images, audio_path, output_path, scenes, cfg) -> str
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -298,8 +299,14 @@ def _build_ass_karaoke(
     return header + "\n".join(events) + "\n"
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Split narration into individual sentences on .  !  ? boundaries."""
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _write_srt(scenes: list[dict], scene_durations: list[float], path: str) -> None:
-    """Write an SRT file where each subtitle = one scene's narration."""
+    """Write an SRT file — one subtitle per sentence, time-sliced within each scene."""
     lines = []
     t = 0.0
     idx = 1
@@ -308,10 +315,18 @@ def _write_srt(scenes: list[dict], scene_durations: list[float], path: str) -> N
         if not text:
             t += dur
             continue
-        start = _seconds_to_srt_time(t)
-        end   = _seconds_to_srt_time(t + dur)
-        lines.append(f"{idx}\n{start} --> {end}\n{text}\n")
-        idx += 1
+        sentences = _split_sentences(text)
+        if not sentences:
+            t += dur
+            continue
+        time_per = dur / len(sentences)
+        st = t
+        for sentence in sentences:
+            start = _seconds_to_srt_time(st)
+            end   = _seconds_to_srt_time(st + time_per)
+            lines.append(f"{idx}\n{start} --> {end}\n{sentence}\n")
+            idx += 1
+            st += time_per
         t += dur
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

@@ -150,7 +150,7 @@ Respond with exactly this JSON structure:
   "story_title": "<compelling title, max 8 words>",
   "scenes": [
     {{
-      "narration": "<what the narrator says for this scene, 1-2 punchy sentences, max 20 words each>",
+      "narration": "<what the narrator says for this scene, 1-2 complete sentences with proper punctuation ending in . ! or ?, max 20 words each>",
       "image_prompt": "<detailed visual description for AI image generation, 1-3 sentences, no art-style words (added automatically). {image_prompt_rules}>"
     }}
   ]
