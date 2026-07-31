@@ -216,7 +216,7 @@ def run_topic(topic: dict, flags: list[str]) -> dict | None:
         return None
 
     try:
-        payload = json.loads(script_file.read_text(encoding="utf-8"))
+        payload = json.loads(script_file.read_text(encoding="utf-8", errors="replace"))
     except Exception as e:
         log.warning("Could not parse script file %s: %s", script_file, e)
         return None

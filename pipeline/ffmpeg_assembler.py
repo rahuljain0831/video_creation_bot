@@ -32,7 +32,7 @@ def _get_duration(path: str) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", path],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True, text=True, timeout=30,
     )
     try:
         return float(result.stdout.strip())
