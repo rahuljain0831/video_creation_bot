@@ -1,5 +1,6 @@
 # Secrets
 .env
+credentials/*.json
 
 # Generated output (images, audio, video, DB, scripts)
 output/

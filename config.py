@@ -44,6 +44,7 @@ class Config:
     background_audio = _settings.get("background_audio", {})
     image_library    = _settings.get("image_library", {})
     pexels_library   = _settings.get("pexels_library", {})
+    SOCIAL_CONFIG_PATH: str = str(Path(__file__).parent / "social_config.json")
 
 
 cfg = Config()
