@@ -107,7 +107,7 @@
     "voice_edge": "en-US-GuyNeural"
   },
   "background_audio": {
-    "enabled": true,
+    "enabled": false,
     "provider": "direct_url",
     "urls": [
       "https://archive.org/download/SriVasudevacharyasClassChantsNarayanupanishad/Chanting-NarayanUpanishad.mp3",
