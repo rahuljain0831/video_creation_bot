@@ -28,12 +28,15 @@ def watch(video_id: int, db_path: str) -> None:
     last_status = None
 
     while time.monotonic() < deadline:
+        row = None
         try:
             conn = sqlite3.connect(db_path)
-            row = conn.execute(
-                "SELECT status FROM videos WHERE id=?", (video_id,)
-            ).fetchone()
-            conn.close()
+            try:
+                row = conn.execute(
+                    "SELECT status FROM videos WHERE id=?", (video_id,)
+                ).fetchone()
+            finally:
+                conn.close()
         except Exception as e:
             print(f"[{_now()}]  DB error: {e}")
             time.sleep(POLL_INTERVAL)
