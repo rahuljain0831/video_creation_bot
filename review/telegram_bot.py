@@ -134,14 +134,23 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     log.info("video_id=%d → %s (feedback_id=%d)", video_id, new_status, feedback_id)
 
     try:
-        await query.edit_message_caption(
-            caption=f"{query.message.caption}\n\n<b>{label}</b>\n<i>Reply with feedback text (optional)</i>",
-            parse_mode="HTML",
-            reply_markup=None,
-        )
+        if query.message.caption is not None:
+            # Media message (video/photo) — edit caption
+            await query.edit_message_caption(
+                caption=f"{query.message.caption}\n\n<b>{label}</b>\n<i>Reply with feedback text (optional)</i>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        else:
+            # Plain text message (captions message) — edit text
+            await query.edit_message_text(
+                text=f"{query.message.text}\n\n<b>{label}</b>\n<i>Reply with feedback text (optional)</i>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
     except Exception as e:
         if "not modified" not in str(e).lower():
-            raise
+            log.warning("edit_message failed (non-fatal): %s", e)
 
 
 # ── Text reply handler ────────────────────────────────────────────────────────
