@@ -50,26 +50,39 @@ def get_pexels_image(
     output_dir: str,
     scene_index: int,
     fallback_query: str | None = None,
+    used_photo_ids: set[int] | None = None,
 ) -> str:
     """
     Drop-in replacement for image_library.get_library_image().
     Searches Pexels using image_prompt (+ niche art_style_prompt_suffix as
-    a bias term), downloads the top match to output_dir/scene_XX.jpg.
+    a bias term), downloads the best unused match to output_dir/scene_XX.jpg.
 
+    used_photo_ids: mutable set tracking photo IDs already used this video run.
     Raises PexelsError if no results even after fallback_query.
     """
     style_suffix = niche.get("art_style_prompt_suffix", "")
     query = f"{image_prompt} {style_suffix}".strip()
 
     try:
-        photos = search_pexels(query)
+        photos = search_pexels(query, per_page=15)
     except PexelsError:
         if not fallback_query:
             raise
         log.warning("Primary query failed, retrying with fallback: %s", fallback_query)
-        photos = search_pexels(fallback_query)
+        photos = search_pexels(fallback_query, per_page=15)
 
-    best = photos[0]
+    # Filter out already-used photos; fall back to any if all used
+    if used_photo_ids:
+        available = [p for p in photos if p["id"] not in used_photo_ids]
+        if not available:
+            log.warning("All Pexels results already used; repeating a photo for scene %d", scene_index)
+            available = photos
+    else:
+        available = photos
+
+    best = available[0]
+    if used_photo_ids is not None:
+        used_photo_ids.add(best["id"])
     img_url = best["src"]["large2x"]
 
     dest_dir = Path(output_dir)

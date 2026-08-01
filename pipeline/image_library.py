@@ -281,6 +281,7 @@ def search_library(
     niche: dict,
     conn: sqlite3.Connection,
     limit: int = 5,
+    exclude_ids: set[int] | None = None,
 ) -> list[dict]:
     """
     Find best-matching images for a scene's image_prompt.
@@ -290,20 +291,26 @@ def search_library(
     2. Fallback: filter by niche tradition, random order
     3. Fallback: any image in library, random
 
+    exclude_ids: set of image_library.id values to skip (already used this video).
+
     Returns list of dicts: {id, file_path, deity_name, tradition, full_description}
     """
     fts_query = _extract_fts_keywords(image_prompt)
+    ex_ids = list(exclude_ids) if exclude_ids else []
+    ex_clause = f"AND il.id NOT IN ({','.join('?' * len(ex_ids))})" if ex_ids else ""
 
     if fts_query:
         try:
+            params: list = [fts_query] + ex_ids + [limit]
             rows = conn.execute(
-                """SELECT il.id, il.file_path, il.deity_name, il.tradition, il.full_description
+                f"""SELECT il.id, il.file_path, il.deity_name, il.tradition, il.full_description
                    FROM image_library_fts fts
                    JOIN image_library il ON il.id = fts.rowid
                    WHERE image_library_fts MATCH ?
+                   {ex_clause}
                    ORDER BY rank
                    LIMIT ?""",
-                (fts_query, limit),
+                params,
             ).fetchall()
             if rows:
                 return [
@@ -315,13 +322,10 @@ def search_library(
             log.warning("FTS query failed (%s), falling back to tradition filter", exc)
 
     # Fallback 1: tradition filter
-    tradition = niche.get("id", "")  # e.g. "mythology" → not ideal, use myth_type if available
-    # Try to find tradition from niche label or id
     tradition_map = {
         "hindu": "hindu", "norse": "norse", "egypt": "egyptian",
         "greek": "greek", "buddhist": "buddhist",
     }
-    # niche may have been mutated with sub-type label
     niche_label = niche.get("label", "").lower()
     matched_tradition = next(
         (v for k, v in tradition_map.items() if k in niche_label), None
@@ -329,9 +333,10 @@ def search_library(
 
     if matched_tradition:
         rows = conn.execute(
-            """SELECT id, file_path, deity_name, tradition, full_description
-               FROM image_library WHERE tradition=? ORDER BY RANDOM() LIMIT ?""",
-            (matched_tradition, limit),
+            f"""SELECT id, file_path, deity_name, tradition, full_description
+               FROM image_library WHERE tradition=? {ex_clause.replace('il.id', 'id')}
+               ORDER BY RANDOM() LIMIT ?""",
+            [matched_tradition] + ex_ids + [limit],
         ).fetchall()
         if rows:
             return [
@@ -340,11 +345,12 @@ def search_library(
                 for r in rows
             ]
 
-    # Fallback 2: any image
+    # Fallback 2: any image (excluding used)
+    ex_where = ex_clause.replace("AND il.id", "WHERE id") if ex_clause else ""
     rows = conn.execute(
-        """SELECT id, file_path, deity_name, tradition, full_description
-           FROM image_library ORDER BY RANDOM() LIMIT ?""",
-        (limit,),
+        f"""SELECT id, file_path, deity_name, tradition, full_description
+           FROM image_library {ex_where} ORDER BY RANDOM() LIMIT ?""",
+        ex_ids + [limit],
     ).fetchall()
     return [
         {"id": r[0], "file_path": r[1], "deity_name": r[2],
@@ -395,19 +401,27 @@ def get_library_image(
     video_id: int,
     cfg=None,
     preselected_row: dict | None = None,
+    used_image_ids: set[int] | None = None,
 ) -> str:
     """
     Finds best matching image from library, copies it to output_dir/scene_XX.png.
     Returns that destination path.
     Raises LibraryEmptyError if library has no images at all.
 
+    used_image_ids: mutable set of already-used image_library.id values.
+    Images in this set are excluded; chosen image's ID is added to the set.
+
     If preselected_row is provided (from deity_map.find_best_image_for_scene),
-    skips the search and uses that row directly.
+    uses it directly (falling back to search if it's already used).
     """
+    # If preselected row is already used this video, ignore it and search fresh
+    if preselected_row and used_image_ids and preselected_row.get("id") in used_image_ids:
+        preselected_row = None
+
     if preselected_row:
         candidates = [preselected_row]
     else:
-        candidates = search_library(image_prompt, niche, conn)
+        candidates = search_library(image_prompt, niche, conn, exclude_ids=used_image_ids)
 
     if not candidates:
         raise LibraryEmptyError(
@@ -434,6 +448,9 @@ def get_library_image(
     dest = dest_dir / f"scene_{scene_index:02d}.png"
 
     shutil.copy2(src, dest)
+
+    if used_image_ids is not None:
+        used_image_ids.add(best["id"])
 
     log.info(
         "Library match: scene %d → %s (%s, %s)",

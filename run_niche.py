@@ -207,6 +207,8 @@ def main() -> None:
         images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths: list[str] = []
         _use_pexels = niche.get("image_source", "library") == "pexels"
+        _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
+        _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
 
         for i, scene in enumerate(script["scenes"]):
             log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
@@ -219,31 +221,24 @@ def main() -> None:
                         output_dir=images_dir,
                         scene_index=i,
                         fallback_query=fallback_q,
+                        used_photo_ids=_used_pexels_ids,
                     )
                 else:
-                    img_row = find_best_image_for_scene(scene["image_prompt"], niche, conn, cfg)
-                    if img_row:
-                        # Copy/link the library image to the run output dir
-                        img_path = get_library_image(
-                            image_prompt=scene["image_prompt"],
-                            niche=niche,
-                            conn=conn,
-                            output_dir=images_dir,
-                            scene_index=i,
-                            video_id=video_id,
-                            cfg=cfg,
-                            preselected_row=img_row,
-                        )
-                    else:
-                        img_path = get_library_image(
-                            image_prompt=scene["image_prompt"],
-                            niche=niche,
-                            conn=conn,
-                            output_dir=images_dir,
-                            scene_index=i,
-                            video_id=video_id,
-                            cfg=cfg,
-                        )
+                    img_row = find_best_image_for_scene(
+                        scene["image_prompt"], niche, conn, cfg,
+                        exclude_ids=_used_library_ids,
+                    )
+                    img_path = get_library_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        conn=conn,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        video_id=video_id,
+                        cfg=cfg,
+                        preselected_row=img_row if img_row else None,
+                        used_image_ids=_used_library_ids,
+                    )
             except LibraryEmptyError as e:
                 log.error("Image library empty for scene %d: %s", i, e)
                 log.error("Run: python ingest_library.py --folder <path_to_images>")

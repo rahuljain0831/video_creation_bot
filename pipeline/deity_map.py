@@ -119,6 +119,7 @@ def find_best_image_for_scene(
     niche: dict,
     conn: sqlite3.Connection,
     cfg=None,
+    exclude_ids: set[int] | None = None,
 ) -> dict | None:
     """
     Given a scene's image_prompt, find the best library image.
@@ -126,11 +127,12 @@ def find_best_image_for_scene(
     Strategy:
     1. Detect deity name in prompt via deity_prompts.find_deity()
     2. If found: query image_library by deity_name column (exact name + variants)
-    3. Rank multiple matches by tag overlap with scene prompt
+    3. Rank multiple matches by tag overlap with scene prompt (skip exclude_ids)
     4. Fallback: FTS search on full prompt
     5. Fallback: tradition filter → random
     6. Fallback: any image
 
+    exclude_ids: set of image_library.id values already used this video — skipped.
     Returns image_library row dict or None if library is empty.
     """
     from pipeline.deity_prompts import get_lookup, find_deity, find_all_variants, load_all_data, _norm_base
@@ -153,8 +155,8 @@ def find_best_image_for_scene(
             for alias in v.get("aliases", []):
                 search_names.add(str(alias))
 
-        # Query by each name, collect unique rows
-        seen_ids: set[int] = set()
+        # Query by each name, collect unique rows (excluding already-used)
+        seen_ids: set[int] = set(exclude_ids or [])
         candidates: list[dict] = []
         for name in search_names:
             if not name:
@@ -179,7 +181,7 @@ def find_best_image_for_scene(
             log.info("deity_map: no library images for deity=%r, falling back to FTS", deity_name)
 
     # Step 4: FTS fallback
-    fts_results = search_library(scene_prompt, niche, conn, limit=5)
+    fts_results = search_library(scene_prompt, niche, conn, limit=5, exclude_ids=exclude_ids)
     if fts_results:
         log.info("deity_map: FTS fallback matched %d image(s)", len(fts_results))
         return fts_results[0]

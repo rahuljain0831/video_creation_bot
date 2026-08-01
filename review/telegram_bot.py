@@ -3,13 +3,17 @@ Phase 6 — Telegram review bot.
 
 Flow:
   1. Worker calls send_for_review(video_id, file_path, quote_text)
-  2. Bot sends video + quote with Approve / Reject buttons
-  3. Tap button → status updated, basic feedback recorded
-  4. Optional: reply text after tapping → Ollama parses tags and appends to feedback row
+  2. Bot sends video (no buttons); captions message sent separately with Approve/Reject
+  3. Tap Approve → status='approved'
+  4. Tap Reject → bot edits message to ask for feedback text
+  5. User replies with feedback → if retry_count < 3: run_retry in background thread
+                                  else: permanently_rejected
 """
 import asyncio
+import html as html_lib
 import logging
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -29,8 +33,15 @@ log = logging.getLogger(__name__)
 _APPROVE = "approve"
 _REJECT  = "reject"
 
-# In-memory map: chat_id → last feedback_row_id awaiting text detail
-# (simple single-user bot — no persistence needed)
+MAX_RETRIES = 3
+
+# Shared thread pool for pipeline work (retries + future new-video tasks)
+_executor = ThreadPoolExecutor(max_workers=4)
+
+# chat_id → (feedback_id, video_id, retry_count)  — awaiting rejection feedback text
+_pending_retry: dict[int, tuple[int, int, int]] = {}
+
+# chat_id → feedback_id  — awaiting optional tag text after approve
 _pending_text: dict[int, int] = {}
 
 
@@ -55,32 +66,34 @@ async def _send_video_async(
     conn: sqlite3.Connection | None = None,
 ) -> None:
     from telegram.request import HTTPXRequest
-    bot = Bot(token=cfg.TELEGRAM_BOT_TOKEN,
-              request=HTTPXRequest(read_timeout=120, write_timeout=120,
-                                   connect_timeout=30, media_write_timeout=300))
-    # Include quota status + waiting_quota count in caption
-    quota_line = ""
-    if conn is not None:
-        quota_line = _build_quota_summary_text(conn)
-        waiting_count = conn.execute(
-            "SELECT COUNT(*) FROM videos WHERE status='waiting_quota'"
-        ).fetchone()[0]
-        if waiting_count:
-            quota_line += f" | Waiting: {waiting_count}"
+    async with Bot(
+        token=cfg.TELEGRAM_BOT_TOKEN,
+        request=HTTPXRequest(read_timeout=120, write_timeout=120,
+                             connect_timeout=30, media_write_timeout=300),
+    ) as bot:
+        # Include quota status + waiting_quota count in caption
+        quota_line = ""
+        if conn is not None:
+            quota_line = _build_quota_summary_text(conn)
+            waiting_count = conn.execute(
+                "SELECT COUNT(*) FROM videos WHERE status='waiting_quota'"
+            ).fetchone()[0]
+            if waiting_count:
+                quota_line += f" | Waiting: {waiting_count}"
 
-    caption = f'"{quote_text}"\n\n<i>video_id={video_id}</i>'
-    if quota_line:
-        caption += f"\n<i>{quota_line}</i>"
+        caption = f'"{quote_text}"\n\n<i>video_id={video_id}</i>'
+        if quota_line:
+            caption += f"\n<i>{quota_line}</i>"
 
-    with open(file_path, "rb") as f:
-        await bot.send_video(
-            chat_id=cfg.TELEGRAM_CHAT_ID,
-            video=f,
-            caption=caption,
-            parse_mode="HTML",
-            supports_streaming=True,
-        )
-    log.info("Sent video_id=%d to Telegram", video_id)
+        with open(file_path, "rb") as f:
+            await bot.send_video(
+                chat_id=cfg.TELEGRAM_CHAT_ID,
+                video=f,
+                caption=caption,
+                parse_mode="HTML",
+                supports_streaming=True,
+            )
+        log.info("Sent video_id=%d to Telegram", video_id)
 
 
 def send_for_review(
@@ -109,44 +122,72 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     video_id = int(video_id_str)
     chat_id  = query.message.chat_id
 
-    if action == _APPROVE:
-        new_status = "approved"
-        rating = "good"
-        label  = "✅ Approved"
-    else:
-        new_status = "rejected"
-        rating = "bad"
-        label  = "❌ Rejected"
-
     conn = sqlite3.connect(cfg.paths["db"])
-    conn.execute("UPDATE videos SET status = ? WHERE id = ?", (new_status, video_id))
-    conn.execute(
-        "INSERT INTO feedback (video_id, rating, source) VALUES (?, ?, 'manual')",
-        (video_id, rating),
-    )
-    conn.commit()
-    feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.close()
+    conn.execute("PRAGMA journal_mode=WAL")
 
-    # Store feedback_id so a follow-up text message can append tags
-    _pending_text[chat_id] = feedback_id
+    if action == _APPROVE:
+        conn.execute("UPDATE videos SET status='approved' WHERE id=?", (video_id,))
+        conn.execute(
+            "INSERT INTO feedback (video_id, rating, source) VALUES (?, 'good', 'manual')",
+            (video_id,),
+        )
+        conn.commit()
+        feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
 
-    log.info("video_id=%d → %s (feedback_id=%d)", video_id, new_status, feedback_id)
+        _pending_text[chat_id] = feedback_id
+        log.info("video_id=%d approved (feedback_id=%d)", video_id, feedback_id)
+
+        label = "✅ Approved"
+        suffix = "<i>Reply with any notes (optional)</i>"
+
+    else:
+        # Read current retry_count to show user how many retries remain
+        row = conn.execute(
+            "SELECT retry_count FROM videos WHERE id=?", (video_id,)
+        ).fetchone()
+        retry_count = row[0] if row else 0
+
+        conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+        conn.execute(
+            "INSERT INTO feedback (video_id, rating, source) VALUES (?, 'bad', 'manual')",
+            (video_id,),
+        )
+        conn.commit()
+        feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+
+        _pending_retry[chat_id] = (feedback_id, video_id, retry_count)
+        log.info(
+            "video_id=%d rejected (feedback_id=%d retry_count=%d)",
+            video_id, feedback_id, retry_count,
+        )
+
+        retries_left = MAX_RETRIES - retry_count
+        label = "❌ Rejected"
+        suffix = (
+            f"<i>Reply with what needs changing ({retries_left} retr{'y' if retries_left == 1 else 'ies'} left)</i>"
+        )
 
     try:
         if query.message.caption is not None:
             # Media message (video/photo) — edit caption
+            original = html_lib.escape(query.message.caption or "")
+            new_caption = f"{original}\n\n<b>{label}</b>\n{suffix}"
+            if len(new_caption) > 1020:
+                new_caption = original[:800] + f"...\n\n<b>{label}</b>\n{suffix}"
             await query.edit_message_caption(
-                caption=f"{query.message.caption}\n\n<b>{label}</b>\n<i>Reply with feedback text (optional)</i>",
+                caption=new_caption,
                 parse_mode="HTML",
                 reply_markup=None,
             )
         else:
-            # Plain text message (captions message) — edit text
-            await query.edit_message_text(
-                text=f"{query.message.text}\n\n<b>{label}</b>\n<i>Reply with feedback text (optional)</i>",
+            # Plain text message (social captions) — just remove keyboard + reply status
+            await query.edit_message_reply_markup(reply_markup=None)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"video_id={video_id}: <b>{label}</b>\n{suffix}",
                 parse_mode="HTML",
-                reply_markup=None,
             )
     except Exception as e:
         if "not modified" not in str(e).lower():
@@ -159,13 +200,55 @@ async def _handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     chat_id = update.message.chat_id
     text    = update.message.text.strip()
 
+    # ── Rejection feedback path (triggers retry) ──────────────────────────────
+    retry_entry = _pending_retry.pop(chat_id, None)
+    if retry_entry is not None:
+        feedback_id, video_id, retry_count = retry_entry
+
+        # Save feedback text
+        conn = sqlite3.connect(cfg.paths["db"])
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            "UPDATE feedback SET feedback_text=? WHERE id=?",
+            (text, feedback_id),
+        )
+        conn.commit()
+
+        if retry_count >= MAX_RETRIES:
+            conn.execute(
+                "UPDATE videos SET status='permanently_rejected' WHERE id=?",
+                (video_id,),
+            )
+            conn.commit()
+            conn.close()
+            log.info("video_id=%d permanently rejected after %d retries", video_id, retry_count)
+            await update.message.reply_text(
+                f"Max retries ({MAX_RETRIES}) reached for video {video_id}. "
+                "Marked as permanently rejected."
+            )
+            return
+
+        conn.close()
+
+        # Submit retry to thread pool — non-blocking
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(_executor, _run_retry_safe, video_id, text, chat_id)
+
+        retries_used = retry_count + 1
+        await update.message.reply_text(
+            f"Regenerating video (retry {retries_used}/{MAX_RETRIES}) with your feedback...\n"
+            "New video will arrive shortly."
+        )
+        return
+
+    # ── Approve follow-up notes path ──────────────────────────────────────────
     feedback_id = _pending_text.pop(chat_id, None)
     if feedback_id is None:
         return  # unsolicited message — ignore
 
     conn = sqlite3.connect(cfg.paths["db"])
     row  = conn.execute(
-        "SELECT rating FROM feedback WHERE id = ?", (feedback_id,)
+        "SELECT rating FROM feedback WHERE id=?", (feedback_id,)
     ).fetchone()
 
     if not row:
@@ -176,16 +259,43 @@ async def _handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     tags   = parse_tags(text, rating)
 
     conn.execute(
-        "UPDATE feedback SET feedback_text = ?, parsed_tags = ? WHERE id = ?",
+        "UPDATE feedback SET feedback_text=?, parsed_tags=? WHERE id=?",
         (text, __import__("json").dumps(tags) if tags else None, feedback_id),
     )
     conn.commit()
     conn.close()
 
     log.info("feedback_id=%d text saved, tags=%s", feedback_id, tags)
-
     reply = f"Tags: {', '.join(tags)}" if tags else "Saved (no tags extracted)"
     await update.message.reply_text(reply)
+
+
+# ── Retry wrapper (runs in thread pool) ──────────────────────────────────────
+
+def _run_retry_safe(video_id: int, feedback: str, chat_id: int) -> None:
+    """Run run_retry in a worker thread; notify Telegram on failure."""
+    from pipeline.retry import run_retry
+
+    try:
+        new_id = run_retry(video_id, feedback, cfg)
+        log.info("retry done: original_id=%d new_id=%d", video_id, new_id)
+    except Exception as exc:
+        log.exception("run_retry failed: video_id=%d", video_id)
+        # Notify user of failure — fire-and-forget via new event loop
+        try:
+            async def _notify():
+                from telegram.request import HTTPXRequest
+                async with Bot(
+                    token=cfg.TELEGRAM_BOT_TOKEN,
+                    request=HTTPXRequest(connect_timeout=30, read_timeout=60),
+                ) as bot:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=f"Retry failed for video {video_id}: {exc}",
+                    )
+            asyncio.run(_notify())
+        except Exception as notify_err:
+            log.warning("Failed to send retry-failure notification: %s", notify_err)
 
 
 # ── Bot runner ────────────────────────────────────────────────────────────────
