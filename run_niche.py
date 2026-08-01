@@ -353,12 +353,14 @@ def main() -> None:
                 social_caps = generate_social_captions(script, niche, cfg)
                 if social_caps:
                     msg_text = format_telegram_message(script["story_title"], social_caps)
+                    if len(msg_text) > 4000:
+                        msg_text = msg_text[:4000] + "\n...(truncated)"
                     async def _send_captions():
-                        bot = Bot(
+                        async with Bot(
                             token=cfg.TELEGRAM_BOT_TOKEN,
                             request=HTTPXRequest(connect_timeout=30, read_timeout=60),
-                        )
-                        await bot.send_message(chat_id=cfg.TELEGRAM_CHAT_ID, text=msg_text)
+                        ) as bot:
+                            await bot.send_message(chat_id=cfg.TELEGRAM_CHAT_ID, text=msg_text)
                     asyncio.run(_send_captions())
                     log.info("Social captions sent to Telegram.")
                 else:

@@ -11,6 +11,7 @@ import sqlite3
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 POLL_INTERVAL = 5       # seconds between DB checks
 TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -69,7 +70,10 @@ def main() -> None:
     video_id = int(sys.argv[1])
 
     from config import cfg
-    db_path = cfg.paths["db"]
+    db_path = str(Path(__file__).parent / cfg.paths["db"])
+    if not Path(db_path).exists():
+        print(f"DB not found: {db_path}")
+        sys.exit(1)
 
     try:
         watch(video_id, db_path)

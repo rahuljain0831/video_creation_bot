@@ -69,7 +69,7 @@ def generate_social_captions(script: dict, niche: dict, cfg=None) -> dict:
     """
     cfg_router = cfg.llm_router if cfg else {}
     story_title = script.get("story_title", "Untitled")
-    narration = " ".join(s["narration"] for s in script.get("scenes", []))
+    narration = " ".join(s.get("narration", "") for s in script.get("scenes", []))
     tone = niche.get("tone", "engaging")
 
     platform_instructions = "\n".join(
