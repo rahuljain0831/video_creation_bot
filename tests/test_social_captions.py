@@ -69,3 +69,12 @@ def test_format_telegram_message():
     assert "TikTok" in msg
     assert "#space" in msg
     assert "The Birth of a Quasar" in msg
+
+
+def test_returns_empty_dict_on_partial_llm_response():
+    from pipeline.social_captions import generate_social_captions
+    # LLM returns valid JSON but only 3 of 6 platforms — should return {}
+    partial_json = '{"youtube": {"caption": "Test", "hashtags": ["#a"]}, "instagram": {"caption": "Test2", "hashtags": ["#b"]}, "facebook": {"caption": "Test3", "hashtags": ["#c"]}}'
+    with patch("pipeline.social_captions.call_llm", return_value=(partial_json, "gemini/test")):
+        result = generate_social_captions(_SCRIPT, _NICHE)
+    assert result == {}

@@ -39,7 +39,7 @@ def _extract_json(text: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1))
@@ -112,8 +112,12 @@ Respond with ONLY valid JSON, no markdown fences:
         if caption:
             result[platform] = {"caption": caption, "hashtags": hashtags}
 
-    if not result:
-        log.warning("social_captions: LLM returned no valid platform entries. raw=%s", raw[:200])
+    if len(result) != len(_PLATFORMS):
+        log.warning(
+            "social_captions: incomplete response (%d/%d platforms). raw=%s",
+            len(result), len(_PLATFORMS), raw[:200],
+        )
+        return {}
 
     log.info("social_captions: generated for %d platforms using %s", len(result), model_used)
     return result
