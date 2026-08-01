@@ -60,11 +60,13 @@ def get_pexels_image(
     used_photo_ids: mutable set tracking photo IDs already used this video run.
     Raises PexelsError if no results even after fallback_query.
     """
-    style_suffix = niche.get("art_style_prompt_suffix", "")
-    query = f"{image_prompt} {style_suffix}".strip()
+    # Use only the first 80 chars of the image_prompt as the Pexels search term.
+    # Art style suffixes are generation directives, not good search keywords,
+    # and long URLs cause Pexels 403 errors.
+    search_term = image_prompt[:80].rsplit(" ", 1)[0] if len(image_prompt) > 80 else image_prompt
 
     try:
-        photos = search_pexels(query, per_page=15)
+        photos = search_pexels(search_term, per_page=15)
     except PexelsError:
         if not fallback_query:
             raise
