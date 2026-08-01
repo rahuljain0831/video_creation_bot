@@ -53,6 +53,7 @@
     {
       "id": "scary_stories",
       "label": "Scary Stories",
+      "image_source": "pexels",
       "tone": "suspenseful, unsettling",
       "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition",
       "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground."
@@ -60,6 +61,7 @@
     {
       "id": "heists",
       "label": "Heists",
+      "image_source": "pexels",
       "tone": "tense, stylish, high-stakes",
       "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition",
       "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground."
