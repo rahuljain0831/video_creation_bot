@@ -27,6 +27,23 @@
       "tone": "dramatic, awe-inspiring",
       "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition",
       "image_prompt_rules": "Every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-ChristopherNeural",
+        "rate": "-5%",
+        "volume": "+5%",
+        "pitch": "+0Hz"
+      },
+      "background_audio": {
+        "enabled": true,
+        "provider": "direct_url",
+        "urls": [
+          "https://archive.org/download/SriVasudevacharyasClassChantsNarayanupanishad/Chanting-NarayanUpanishad.mp3",
+          "https://archive.org/download/PurushaSuktam-VedicCreaterCreation/PurushaSuktam.mp3",
+          "https://archive.org/download/shiv-namaskarartha-mantra-monday-special-lo-fi-version/Shiv%20Namaskarartha%20Mantra%20%20Monday%20Special%20%20LoFi%20Version.mp3",
+          "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3"
+        ],
+        "volume": 0.20
+      },
       "sub_types": {
         "hindu": {
           "label": "Hindu Mythology",
@@ -36,7 +53,13 @@
         "norse": {
           "label": "Norse Mythology",
           "tone": "brutal, epic, fate-driven",
-          "art_style_prompt_suffix": "dark Norse saga illustration, runic stone engravings aesthetic, muted steel blues and iron grays, dramatic stormy Nordic skies, Viking age warriors and gods, cinematic composition"
+          "art_style_prompt_suffix": "dark Norse saga illustration, runic stone engravings aesthetic, muted steel blues and iron grays, dramatic stormy Nordic skies, Viking age warriors and gods, cinematic composition",
+          "tts": {
+            "voice_edge": "en-GB-RyanNeural",
+            "rate": "+5%",
+            "volume": "+5%",
+            "pitch": "-5Hz"
+          }
         },
         "egypt": {
           "label": "Egyptian Mythology",
@@ -46,7 +69,13 @@
         "greek": {
           "label": "Greek Mythology",
           "tone": "heroic, tragic, passionate",
-          "art_style_prompt_suffix": "ancient Greek vase painting meets epic digital art, marble white and Aegean blue palette, classical sculpture aesthetic, dramatic Olympian lighting, togas and bronze armor, cinematic composition"
+          "art_style_prompt_suffix": "ancient Greek vase painting meets epic digital art, marble white and Aegean blue palette, classical sculpture aesthetic, dramatic Olympian lighting, togas and bronze armor, cinematic composition",
+          "tts": {
+            "voice_edge": "en-US-GuyNeural",
+            "rate": "+5%",
+            "volume": "+5%",
+            "pitch": "+0Hz"
+          }
         }
       }
     },
@@ -56,7 +85,21 @@
       "image_source": "pexels",
       "tone": "suspenseful, unsettling",
       "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition",
-      "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground."
+      "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-GuyNeural",
+        "rate": "-15%",
+        "volume": "-5%",
+        "pitch": "-10Hz"
+      },
+      "background_audio": {
+        "enabled": true,
+        "provider": "direct_url",
+        "urls": [
+          "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3"
+        ],
+        "volume": 0.15
+      }
     },
     {
       "id": "heists",
@@ -64,7 +107,17 @@
       "image_source": "pexels",
       "tone": "tense, stylish, high-stakes",
       "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition",
-      "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground."
+      "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-RogerNeural",
+        "rate": "+10%",
+        "volume": "+5%",
+        "pitch": "+0Hz"
+      },
+      "background_audio": {
+        "enabled": false,
+        "volume": 0.20
+      }
     },
     {
       "id": "space_science",
@@ -72,7 +125,17 @@
       "tone": "awe-inspiring, curious, grand",
       "art_style_prompt_suffix": "cosmic nebula deep space photography cinematic",
       "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground."
+      "image_prompt_rules": "No humans. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-SteffanNeural",
+        "rate": "+0%",
+        "volume": "+0%",
+        "pitch": "+0Hz"
+      },
+      "background_audio": {
+        "enabled": false,
+        "volume": 0.15
+      }
     },
     {
       "id": "ai_tech_tools",
@@ -80,7 +143,17 @@
       "tone": "sharp, practical, forward-looking",
       "art_style_prompt_suffix": "modern technology screen interface minimal cinematic",
       "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground."
+      "image_prompt_rules": "No humans. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-BrianNeural",
+        "rate": "+5%",
+        "volume": "+0%",
+        "pitch": "+0Hz"
+      },
+      "background_audio": {
+        "enabled": false,
+        "volume": 0.15
+      }
     },
     {
       "id": "finance_facts",
@@ -88,7 +161,17 @@
       "tone": "confident, clear, high-value",
       "art_style_prompt_suffix": "finance business city skyline charts cinematic",
       "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground."
+      "image_prompt_rules": "No humans. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground.",
+      "tts": {
+        "voice_edge": "en-US-ChristopherNeural",
+        "rate": "+5%",
+        "volume": "+5%",
+        "pitch": "+0Hz"
+      },
+      "background_audio": {
+        "enabled": false,
+        "volume": 0.15
+      }
     }
   ],
   "llm_router": {
@@ -106,7 +189,10 @@
   "tts": {
     "provider_priority": ["edge_tts", "piper", "kokoro"],
     "voice_piper": "en_US-lessac-medium",
-    "voice_edge": "en-US-GuyNeural"
+    "voice_edge": "en-US-GuyNeural",
+    "rate": "+0%",
+    "volume": "+0%",
+    "pitch": "+0Hz"
   },
   "background_audio": {
     "enabled": false,

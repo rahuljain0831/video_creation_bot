@@ -262,7 +262,7 @@ def main() -> None:
 
         full_narration = "  ".join(s["narration"] for s in script["scenes"])
         audio_dir = str(Path(cfg.paths["audio"]) / run_slug)
-        audio_path, audio_dur = synthesize(full_narration, audio_dir, video_id, cfg=cfg)
+        audio_path, audio_dur = synthesize(full_narration, audio_dir, video_id, cfg=cfg, niche=niche)
         log.info("TTS done: %s (%.2fs)", audio_path, audio_dur)
 
         word_timings_path = str(Path(audio_dir) / "word_timings.json")
@@ -278,15 +278,28 @@ def main() -> None:
         conn.commit()
 
         # ── Step 3.5: Background audio ────────────────────────────────────────
+        # Niche-level background_audio overrides global; global is fallback.
+        niche_bg = niche.get("background_audio", {})
+        bg_enabled = niche_bg.get("enabled", cfg.background_audio.get("enabled", False))
         bg_audio_path = None
-        if cfg.background_audio.get("enabled", False):
+        if bg_enabled:
             log.info("[3.5/5] Fetching background audio...")
             from pipeline.audio_bg import fetch_bg_audio
+            bg_urls = niche_bg.get("urls") or cfg.background_audio.get("urls", [])
+            bg_query = niche_bg.get("query") or cfg.background_audio.get("query", "ambient")
+            bg_volume = niche_bg.get("volume", cfg.background_audio.get("volume", 0.20))
+            # Temporarily override cfg for fetch_bg_audio (it reads cfg.background_audio)
+            _orig_bg = cfg.background_audio.copy()
+            cfg.background_audio["enabled"] = True
+            cfg.background_audio["urls"] = bg_urls
+            cfg.background_audio["query"] = bg_query
+            cfg.background_audio["volume"] = bg_volume
             bg_audio_path = fetch_bg_audio(
-                query=cfg.background_audio.get("query", "chanting meditation"),
+                query=bg_query,
                 duration_secs=audio_dur,
                 cfg=cfg,
             )
+            cfg.background_audio.update(_orig_bg)  # restore
             if bg_audio_path:
                 log.info("Background audio: %s", bg_audio_path)
             else:

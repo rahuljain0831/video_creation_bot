@@ -18,13 +18,24 @@ log = logging.getLogger(__name__)
 
 # ── edge_tts ──────────────────────────────────────────────────────────────────
 
-async def _edge_tts_async(text: str, voice: str, out_path: str) -> list[dict]:
+async def _edge_tts_async(
+    text: str,
+    voice: str,
+    out_path: str,
+    rate: str = "+0%",
+    volume: str = "+0%",
+    pitch: str = "+0Hz",
+) -> list[dict]:
     """
     Stream Edge TTS output, capturing audio bytes and word boundary events.
     Returns list of word timing dicts: {text, offset, duration} in 100-ns units.
     """
     import edge_tts
-    communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
+    communicate = edge_tts.Communicate(
+        text, voice,
+        rate=rate, volume=volume, pitch=pitch,
+        boundary="WordBoundary",
+    )
 
     word_boundaries: list[dict] = []
     audio_chunks: list[bytes] = []
@@ -46,8 +57,15 @@ async def _edge_tts_async(text: str, voice: str, out_path: str) -> list[dict]:
     return word_boundaries
 
 
-def _synthesize_edge(text: str, voice: str, out_path: str) -> tuple[str, list[dict]]:
-    word_boundaries = asyncio.run(_edge_tts_async(text, voice, out_path))
+def _synthesize_edge(
+    text: str,
+    voice: str,
+    out_path: str,
+    rate: str = "+0%",
+    volume: str = "+0%",
+    pitch: str = "+0Hz",
+) -> tuple[str, list[dict]]:
+    word_boundaries = asyncio.run(_edge_tts_async(text, voice, out_path, rate=rate, volume=volume, pitch=pitch))
     return out_path, word_boundaries
 
 
@@ -113,15 +131,37 @@ def _get_duration(path: str) -> float:
 
 # ── public interface ──────────────────────────────────────────────────────────
 
+def _resolve_tts_config(cfg, niche: dict | None) -> dict:
+    """
+    Merge global TTS config with niche-level overrides.
+    Priority (highest first): niche["tts"] > global cfg.tts > hardcoded defaults.
+    """
+    defaults = {
+        "provider_priority": ["edge_tts", "piper", "kokoro"],
+        "voice_edge": "en-US-GuyNeural",
+        "voice_piper": "en_US-lessac-medium",
+        "rate": "+0%",
+        "volume": "+0%",
+        "pitch": "+0Hz",
+    }
+    global_tts = (cfg.tts if cfg is not None else {}) or {}
+    niche_tts = (niche.get("tts") if niche else None) or {}
+    return {**defaults, **global_tts, **niche_tts}
+
+
 def synthesize(
     text: str,
     output_dir: str,
     video_id: int,
     cfg=None,
+    niche: dict | None = None,
 ) -> tuple[str, float]:
     """
     Synthesize speech for `text`. Tries providers in priority order.
     Returns (file_path, duration_seconds).
+
+    niche: optional niche dict — if it has a "tts" key those values override
+           global cfg.tts settings (voice, rate, pitch, volume).
 
     When edge_tts is used, also writes word_timings.json to output_dir
     containing per-word offset/duration data (100-ns units) for karaoke captions.
@@ -129,14 +169,18 @@ def synthesize(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    providers = ["edge_tts", "piper", "kokoro"]
-    voice_edge = "en-US-GuyNeural"
-    voice_piper = "en_US-lessac-medium"
+    tts_cfg = _resolve_tts_config(cfg, niche)
+    providers = tts_cfg["provider_priority"]
+    voice_edge = tts_cfg["voice_edge"]
+    voice_piper = tts_cfg["voice_piper"]
+    rate = tts_cfg["rate"]
+    volume = tts_cfg["volume"]
+    pitch = tts_cfg["pitch"]
 
-    if cfg is not None:
-        providers = cfg.tts.get("provider_priority", providers)
-        voice_edge = cfg.tts.get("voice_edge", voice_edge)
-        voice_piper = cfg.tts.get("voice_piper", voice_piper)
+    log.info(
+        "TTS config: niche=%s voice=%s rate=%s volume=%s pitch=%s",
+        niche.get("id", "?") if niche else "none", voice_edge, rate, volume, pitch,
+    )
 
     last_error = None
     for provider in providers:
@@ -144,7 +188,10 @@ def synthesize(
             if provider == "edge_tts":
                 out_path = str(out_dir / "voice.mp3")
                 log.info("TTS provider=edge_tts video_id=%d", video_id)
-                _, word_boundaries = _synthesize_edge(text, voice_edge, out_path)
+                _, word_boundaries = _synthesize_edge(
+                    text, voice_edge, out_path,
+                    rate=rate, volume=volume, pitch=pitch,
+                )
                 # Save word timings for karaoke caption rendering
                 if word_boundaries:
                     timings_path = str(out_dir / "word_timings.json")
