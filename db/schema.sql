@@ -14,9 +14,13 @@ CREATE TABLE IF NOT EXISTS videos (
     voice_provider  TEXT,
     status          TEXT NOT NULL DEFAULT 'queued' CHECK(status IN (
                         'queued', 'bg_ready', 'voice_ready',
-                        'assembled', 'screened', 'sent', 'approved', 'rejected', 'posted'
+                        'assembled', 'screened', 'sent', 'approved', 'rejected', 'posted',
+                        'permanently_rejected', 'waiting_quota'
                     )),
     file_path       TEXT,
+    retry_count     INTEGER DEFAULT 0,
+    parent_video_id INTEGER REFERENCES videos(id),
+    rejection_feedback TEXT,
     created_at      DATETIME DEFAULT (datetime('now'))
 );
 

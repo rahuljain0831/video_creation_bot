@@ -14,6 +14,9 @@ _MIGRATIONS = [
     ("videos",      "voice_provider",   "TEXT"),
     ("videos",      "file_path",        "TEXT"),
     ("quota_usage", "last_error_code",  "INTEGER"),
+    ("videos",      "retry_count",       "INTEGER DEFAULT 0"),
+    ("videos",      "parent_video_id",   "INTEGER"),
+    ("videos",      "rejection_feedback","TEXT"),
 ]
 
 # DDL migrations: full SQL statements run with error swallowed if already applied.
