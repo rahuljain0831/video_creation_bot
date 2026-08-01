@@ -342,11 +342,11 @@ def main() -> None:
             conn.commit()
             log.info("Sent to Telegram.")
 
-            # Send per-platform social captions as follow-up message
+            # Send per-platform social captions as follow-up message with Approve/Reject buttons
             try:
                 from pipeline.social_captions import generate_social_captions, format_telegram_message
                 import asyncio
-                from telegram import Bot
+                from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
                 from telegram.request import HTTPXRequest
 
                 log.info("[5/5] Generating social captions...")
@@ -355,14 +355,22 @@ def main() -> None:
                     msg_text = format_telegram_message(script["story_title"], social_caps)
                     if len(msg_text) > 4000:
                         msg_text = msg_text[:4000] + "\n...(truncated)"
+                    keyboard = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("✅ Approve", callback_data=f"approve:{video_id}"),
+                        InlineKeyboardButton("❌ Reject",  callback_data=f"reject:{video_id}"),
+                    ]])
                     async def _send_captions():
                         async with Bot(
                             token=cfg.TELEGRAM_BOT_TOKEN,
                             request=HTTPXRequest(connect_timeout=30, read_timeout=60),
                         ) as bot:
-                            await bot.send_message(chat_id=cfg.TELEGRAM_CHAT_ID, text=msg_text)
+                            await bot.send_message(
+                                chat_id=cfg.TELEGRAM_CHAT_ID,
+                                text=msg_text,
+                                reply_markup=keyboard,
+                            )
                     asyncio.run(_send_captions())
-                    log.info("Social captions sent to Telegram.")
+                    log.info("Social captions sent to Telegram with Approve/Reject buttons.")
                 else:
                     log.warning("Social captions empty — skipping follow-up message.")
             except Exception as e:

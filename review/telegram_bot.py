@@ -58,13 +58,6 @@ async def _send_video_async(
     bot = Bot(token=cfg.TELEGRAM_BOT_TOKEN,
               request=HTTPXRequest(read_timeout=120, write_timeout=120,
                                    connect_timeout=30, media_write_timeout=300))
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Approve", callback_data=f"{_APPROVE}:{video_id}"),
-            InlineKeyboardButton("❌ Reject",  callback_data=f"{_REJECT}:{video_id}"),
-        ]
-    ])
-
     # Include quota status + waiting_quota count in caption
     quota_line = ""
     if conn is not None:
@@ -85,7 +78,6 @@ async def _send_video_async(
             video=f,
             caption=caption,
             parse_mode="HTML",
-            reply_markup=keyboard,
             supports_streaming=True,
         )
     log.info("Sent video_id=%d to Telegram", video_id)

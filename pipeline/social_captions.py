@@ -15,12 +15,12 @@ log = logging.getLogger(__name__)
 _PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "pinterest", "linkedin")
 
 _PLATFORM_SPECS = {
-    "youtube":   "SEO-optimized description 200-300 chars, 3-5 hashtags",
-    "instagram": "casual/engaging 100-150 chars, 15-20 hashtags",
-    "facebook":  "conversational 150-200 chars, 3-5 hashtags",
-    "tiktok":    "punchy/trend-aware 80-100 chars, 5-10 hashtags",
-    "pinterest": "descriptive/searchable 100-150 chars, 5-8 hashtags",
-    "linkedin":  "professional/educational tone 150-200 chars, 3-5 hashtags",
+    "youtube":   "SEO-optimized description 200-300 chars, exactly 15 hashtags (YouTube ignores all if more than 15) — mix broad and niche tags",
+    "instagram": "casual/engaging 100-150 chars, exactly 30 hashtags (platform maximum) — mix viral, niche, and topic-specific tags for maximum reach",
+    "facebook":  "conversational 150-200 chars, 10-15 hashtags — mix trending and topic tags",
+    "tiktok":    "punchy/trend-aware 80-150 chars, 20 hashtags — prioritize trending and FYP tags",
+    "pinterest": "descriptive/searchable 150-200 chars, 25-30 hashtags — use keyword-rich and discovery tags",
+    "linkedin":  "professional/educational tone 200-300 chars, exactly 5 hashtags (LinkedIn algo penalises more) — use professional and industry tags",
 }
 
 _EMOJI = {
