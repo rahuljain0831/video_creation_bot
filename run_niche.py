@@ -342,6 +342,30 @@ def main() -> None:
             conn.commit()
             log.info("Sent to Telegram.")
 
+            # Send per-platform social captions as follow-up message
+            try:
+                from pipeline.social_captions import generate_social_captions, format_telegram_message
+                import asyncio
+                from telegram import Bot
+                from telegram.request import HTTPXRequest
+
+                log.info("[5/5] Generating social captions...")
+                social_caps = generate_social_captions(script, niche, cfg)
+                if social_caps:
+                    msg_text = format_telegram_message(script["story_title"], social_caps)
+                    async def _send_captions():
+                        bot = Bot(
+                            token=cfg.TELEGRAM_BOT_TOKEN,
+                            request=HTTPXRequest(connect_timeout=30, read_timeout=60),
+                        )
+                        await bot.send_message(chat_id=cfg.TELEGRAM_CHAT_ID, text=msg_text)
+                    asyncio.run(_send_captions())
+                    log.info("Social captions sent to Telegram.")
+                else:
+                    log.warning("Social captions empty — skipping follow-up message.")
+            except Exception as e:
+                log.warning("Social captions send failed (non-fatal): %s", e)
+
         log.info("=" * 60)
         log.info("Done. video_id=%d  file=%s", video_id, output_path)
         log.info("=" * 60)
