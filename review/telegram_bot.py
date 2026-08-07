@@ -32,6 +32,9 @@ log = logging.getLogger(__name__)
 
 _APPROVE = "approve"
 _REJECT  = "reject"
+_INSTAGRAM = "ig_upload"
+_INSTAGRAM_RETRY = "ig_retry"
+_SKIP_SOCIAL = "skip_social"
 
 MAX_RETRIES = 3
 
@@ -43,6 +46,12 @@ _pending_retry: dict[int, tuple[int, int, int]] = {}
 
 # chat_id → feedback_id  — awaiting optional tag text after approve
 _pending_text: dict[int, int] = {}
+
+# chat_id → (feedback_id, video_id)  — awaiting platform selection after approve
+_pending_platform: dict[int, tuple[int, int]] = {}
+
+# video_id → account_id  — for Instagram uploads
+_instagram_videos: dict[int, str] = {}
 
 
 # ── Send video for review ─────────────────────────────────────────────────────
@@ -135,11 +144,11 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.close()
 
-        _pending_text[chat_id] = feedback_id
+        _pending_platform[chat_id] = (feedback_id, video_id)
         log.info("video_id=%d approved (feedback_id=%d)", video_id, feedback_id)
 
         label = "✅ Approved"
-        suffix = "<i>Reply with any notes (optional)</i>"
+        suffix = "<i>Select a platform to post (optional)</i>"
 
     else:
         # Read current retry_count to show user how many retries remain
@@ -176,19 +185,44 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             new_caption = f"{original}\n\n<b>{label}</b>\n{suffix}"
             if len(new_caption) > 1020:
                 new_caption = original[:800] + f"...\n\n<b>{label}</b>\n{suffix}"
-            await query.edit_message_caption(
-                caption=new_caption,
-                parse_mode="HTML",
-                reply_markup=None,
-            )
+
+            if action == _APPROVE:
+                # Send platform selection buttons
+                keyboard = [
+                    [InlineKeyboardButton("📸 Post to Instagram", callback_data=f"{_INSTAGRAM}:{video_id}")],
+                    [InlineKeyboardButton("📋 Later", callback_data=f"{_SKIP_SOCIAL}:{video_id}")],
+                ]
+                await query.edit_message_caption(
+                    caption=new_caption,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+            else:
+                await query.edit_message_caption(
+                    caption=new_caption,
+                    parse_mode="HTML",
+                    reply_markup=None,
+                )
         else:
             # Plain text message (social captions) — just remove keyboard + reply status
             await query.edit_message_reply_markup(reply_markup=None)
-            await context.bot.send_message(
+            msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"video_id={video_id}: <b>{label}</b>\n{suffix}",
                 parse_mode="HTML",
             )
+
+            if action == _APPROVE:
+                # Send platform selection as separate message
+                keyboard = [
+                    [InlineKeyboardButton("📸 Post to Instagram", callback_data=f"{_INSTAGRAM}:{video_id}")],
+                    [InlineKeyboardButton("📋 Later", callback_data=f"{_SKIP_SOCIAL}:{video_id}")],
+                ]
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="Select a platform to post this video:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
     except Exception as e:
         if "not modified" not in str(e).lower():
             log.warning("edit_message failed (non-fatal): %s", e)
@@ -241,7 +275,37 @@ async def _handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    # ── Approve follow-up notes path ──────────────────────────────────────────
+    # ── Platform selection followed by optional notes ──────────────────────────
+    platform_entry = _pending_platform.pop(chat_id, None)
+    if platform_entry is not None:
+        feedback_id, video_id = platform_entry
+
+        # Save optional notes
+        conn = sqlite3.connect(cfg.paths["db"])
+        conn.execute("PRAGMA journal_mode=WAL")
+        row = conn.execute(
+            "SELECT rating FROM feedback WHERE id=?", (feedback_id,)
+        ).fetchone()
+
+        if row:
+            rating = row[0]
+            tags = parse_tags(text, rating)
+
+            conn.execute(
+                "UPDATE feedback SET feedback_text=?, parsed_tags=? WHERE id=?",
+                (text, __import__("json").dumps(tags) if tags else None, feedback_id),
+            )
+            conn.commit()
+            log.info("feedback_id=%d notes saved, tags=%s", feedback_id, tags)
+            reply = f"Tags: {', '.join(tags)}" if tags else "Saved (no tags extracted)"
+        else:
+            reply = "Saved"
+
+        conn.close()
+        await update.message.reply_text(reply)
+        return
+
+    # ── Approve follow-up notes path (if no platform selection pending) ────────
     feedback_id = _pending_text.pop(chat_id, None)
     if feedback_id is None:
         return  # unsolicited message — ignore
@@ -298,6 +362,195 @@ def _run_retry_safe(video_id: int, feedback: str, chat_id: int) -> None:
             log.warning("Failed to send retry-failure notification: %s", notify_err)
 
 
+# ── Instagram upload handlers ─────────────────────────────────────────────────
+
+def _run_instagram_upload_safe(video_id: int, chat_id: int, account_id: str = "reels_creator") -> None:
+    """Run Instagram upload in worker thread; notify Telegram of result."""
+    import json
+    import sqlite3
+    from pathlib import Path
+    from pipeline import instagram_auth, instagram_upload, social_captions
+
+    try:
+        conn = sqlite3.connect(cfg.paths["db"])
+        conn.execute("PRAGMA journal_mode=WAL")
+
+        # Load video
+        cursor = conn.execute(
+            "SELECT file_path, niche_id FROM videos WHERE id=?", (video_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Video {video_id} not found")
+
+        file_path, niche_id = row
+
+        # Load account and credentials
+        account, creds = instagram_auth.load_instagram_account(account_id, cfg)
+
+        # Load script and generate captions
+        import settings
+        script_dir = Path(cfg.paths.get("scripts", "output/scripts"))
+        script_files = list(script_dir.glob(f"*_{video_id}.json"))
+
+        caption_text = "Check out this amazing video!"
+        hashtags = []
+
+        if script_files:
+            with open(script_files[0]) as f:
+                script = json.load(f)
+
+            # Load niche config for tone
+            niche_config = None
+            for n in cfg.niches:
+                if n["id"] == niche_id:
+                    niche_config = n
+                    break
+
+            if niche_config:
+                try:
+                    captions_result = social_captions.generate_social_captions(
+                        script, niche_config, cfg
+                    )
+                    if captions_result:
+                        ig_data = captions_result.get("instagram", {})
+                        caption_text = ig_data.get("caption", caption_text)
+                        hashtags = ig_data.get("hashtags", [])
+                except Exception as e:
+                    log.warning(f"Failed to generate captions: {e}")
+
+        # Upload asynchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                instagram_upload.upload_reel_to_instagram(
+                    video_id, file_path, caption_text, hashtags, account, creds, conn, cfg
+                )
+            )
+        finally:
+            loop.close()
+            conn.close()
+
+        # Notify user
+        try:
+            async def _notify():
+                from telegram.request import HTTPXRequest
+                async with Bot(
+                    token=cfg.TELEGRAM_BOT_TOKEN,
+                    request=HTTPXRequest(connect_timeout=30, read_timeout=60),
+                ) as bot:
+                    if result["success"]:
+                        text = f"✅ Posted to Instagram!\n{result['post_url']}"
+                    else:
+                        text = f"❌ Instagram upload failed:\n{result['error_msg']}"
+                        if result["error_code"] in (429, 408, 500):
+                            text += "\n\n🔄 Will retry"
+
+                    keyboard = []
+                    if not result["success"] and result["error_code"] not in (401,):
+                        keyboard = [
+                            [InlineKeyboardButton("🔄 Retry", callback_data=f"{_INSTAGRAM_RETRY}:{video_id}")]
+                        ]
+
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+                    )
+            asyncio.run(_notify())
+        except Exception as notify_err:
+            log.warning("Failed to send Instagram result notification: %s", notify_err)
+
+        log.info("Instagram upload result: video_id=%d success=%s", video_id, result["success"])
+
+    except Exception as exc:
+        log.exception("Instagram upload failed: video_id=%d", video_id)
+        try:
+            async def _notify():
+                from telegram.request import HTTPXRequest
+                async with Bot(
+                    token=cfg.TELEGRAM_BOT_TOKEN,
+                    request=HTTPXRequest(connect_timeout=30, read_timeout=60),
+                ) as bot:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=f"❌ Instagram upload error: {exc}",
+                    )
+            asyncio.run(_notify())
+        except Exception as notify_err:
+            log.warning("Failed to send upload-error notification: %s", notify_err)
+
+
+async def _handle_instagram_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Instagram upload button click."""
+    query = update.callback_query
+    await query.answer()
+
+    action, video_id_str = query.data.split(":", 1)
+    video_id = int(video_id_str)
+    chat_id = query.message.chat_id
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ Uploading to Instagram...",
+    )
+
+    # Remove platform selection buttons
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception as e:
+        if "not modified" not in str(e).lower():
+            log.warning("edit_message_reply_markup failed: %s", e)
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _run_instagram_upload_safe, video_id, chat_id)
+
+
+async def _handle_instagram_retry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Instagram retry button click."""
+    query = update.callback_query
+    await query.answer()
+
+    action, video_id_str = query.data.split(":", 1)
+    video_id = int(video_id_str)
+    chat_id = query.message.chat_id
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="🔄 Retrying Instagram upload...",
+    )
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception as e:
+        if "not modified" not in str(e).lower():
+            log.warning("edit_message_reply_markup failed: %s", e)
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _run_instagram_upload_safe, video_id, chat_id)
+
+
+async def _handle_skip_social(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle skip social media button click."""
+    query = update.callback_query
+    await query.answer()
+
+    action, video_id_str = query.data.split(":", 1)
+    video_id = int(video_id_str)
+
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=f"Skipped social media posting for video {video_id}.",
+    )
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception as e:
+        if "not modified" not in str(e).lower():
+            log.warning("edit_message_reply_markup failed: %s", e)
+
+
 # ── Bot runner ────────────────────────────────────────────────────────────────
 
 def run_bot() -> None:
@@ -305,7 +558,19 @@ def run_bot() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set in .env")
 
     app = Application.builder().token(cfg.TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CallbackQueryHandler(_handle_callback))
+
+    # Callback handlers (order matters: more specific patterns first)
+    app.add_handler(
+        CallbackQueryHandler(_handle_instagram_upload, pattern=f"^{_INSTAGRAM}:")
+    )
+    app.add_handler(
+        CallbackQueryHandler(_handle_instagram_retry, pattern=f"^{_INSTAGRAM_RETRY}:")
+    )
+    app.add_handler(
+        CallbackQueryHandler(_handle_skip_social, pattern=f"^{_SKIP_SOCIAL}:")
+    )
+    app.add_handler(CallbackQueryHandler(_handle_callback))  # Default callback handler
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_text))
 
     log.info("Telegram review bot polling...")

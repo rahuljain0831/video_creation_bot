@@ -35,6 +35,13 @@ python verify_keys.py
 # Tests
 pytest                   # all tests
 pytest -m "not slow"     # skip video-writing / network tests
+
+# Instagram setup (one-time)
+# 1. Create Meta App at https://developers.facebook.com/
+# 2. Get short-lived token from Graph API Explorer
+# 3. Exchange for long-lived token:
+python scripts/meta_token_exchange.py reels_creator <short_token> <app_id> <app_secret> <page_id> <ig_business_id>
+# 4. Update social_config.json with account details
 ```
 
 ## Architecture
@@ -61,7 +68,8 @@ optionally provides a story seed, and the pipeline runs end-to-end.
 5. `pipeline/ffmpeg_assembler.py` — applies Ken Burns (pan/zoom via `zoompan` filter) to each
    image, concatenates clips, burns captions, mixes audio into 9:16 mp4.
    Entry point: `assemble_from_images()`.
-6. `review/telegram_bot.py` — sends video + story metadata for manual review.
+6. `review/telegram_bot.py` — sends video + story metadata for manual review. After approval,
+   users can select platforms to post to (Instagram Reels, TikTok coming soon).
 
 **LLM routing (`llm_router.py`):** `call_llm()` tries Groq → Cerebras → Google AI Studio →
 Ollama local in order. Provider order is configured in `settings.json` under `llm_router`.
@@ -99,7 +107,8 @@ LLM fallback order, niche definitions, and image library settings.
 
 **Database (`output/db/agent.db`):** SQLite, initialized by `db/init_db.py`. Key tables:
 - `videos` — one row per video, tracks full status lifecycle
-  (`queued → bg_ready → voice_ready → assembled → sent → approved/rejected`)
+  (`queued → bg_ready → voice_ready → assembled → sent → approved/rejected → posted`)
+- `instagram_posts` — Instagram Reels upload tracking (media_id, post_url, retry_count, status)
 - `decisions` — all script and routing decisions logged with reasoning
 - `feedback` — manual verdicts from Telegram review (good/bad + tags)
 - `quota_usage` — daily LLM quota tracking per provider (groq, cerebras)
@@ -115,6 +124,17 @@ tags, negative_prompts.
 **Image library:** Images must be user-provided. Ingest with `ingest_library.py` before running
 the pipeline. Gemini Vision analyzes each image and stores structured metadata (deity name,
 tradition, tags, description) for retrieval during video generation.
+
+**Social Media Integrations:**
+- `pipeline/instagram_auth.py` — loads credentials from `credentials/{account_id}.json`
+- `pipeline/instagram_quota.py` — enforces daily upload limits (25/day for Instagram)
+- `pipeline/instagram_upload.py` — async Meta Graph API v21.0 integration for Reels upload
+- `social_config.json` — platform registry with accounts, limits, and API settings
+- Integration: After Telegram approval, users can tap "📸 Post to Instagram" to auto-upload
+
+**Platform captions (`pipeline/social_captions.py`):** Single LLM call generates captions +
+hashtags for all 6 platforms (YouTube, Instagram, Facebook, TikTok, Pinterest, LinkedIn).
+Instagram gets 30 hashtags, casual 100-150 char caption, optimized for Reels discovery.
 
 ## Environment
 

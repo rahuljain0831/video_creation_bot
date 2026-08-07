@@ -77,3 +77,28 @@ CREATE TABLE IF NOT EXISTS image_library (
     tags             TEXT,
     ingested_at      DATETIME DEFAULT (datetime('now'))
 );
+
+-- Instagram Reels upload tracking
+CREATE TABLE IF NOT EXISTS instagram_posts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id        INTEGER NOT NULL UNIQUE REFERENCES videos(id),
+    account_id      TEXT NOT NULL,
+    ig_business_id  TEXT NOT NULL,
+    media_id        TEXT,
+    container_id    TEXT,
+    post_url        TEXT,
+    upload_status   TEXT NOT NULL DEFAULT 'pending' CHECK(upload_status IN (
+                        'pending', 'uploading', 'processing', 'published',
+                        'failed', 'permanently_failed'
+                    )),
+    retry_count     INTEGER DEFAULT 0,
+    max_retries     INTEGER DEFAULT 3,
+    last_error_code INTEGER,
+    last_error_msg  TEXT,
+    meta_error_type TEXT,
+    caption_text    TEXT,
+    hashtags        TEXT,
+    upload_started_at  DATETIME,
+    published_at    DATETIME,
+    created_at      DATETIME DEFAULT (datetime('now'))
+);

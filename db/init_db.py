@@ -17,6 +17,8 @@ _MIGRATIONS = [
     ("videos",      "retry_count",       "INTEGER DEFAULT 0"),
     ("videos",      "parent_video_id",   "INTEGER"),
     ("videos",      "rejection_feedback","TEXT"),
+    ("videos",      "platform_posted_to", "TEXT"),
+    ("videos",      "instagram_post_id", "INTEGER"),
 ]
 
 # DDL migrations: full SQL statements run with error swallowed if already applied.
@@ -57,6 +59,29 @@ _DDL_MIGRATIONS = [
         INSERT INTO image_library_fts(rowid, deity_name, tradition, full_description, tags)
         VALUES (new.id, new.deity_name, new.tradition, new.full_description, new.tags);
     END""",
+    """CREATE TABLE IF NOT EXISTS instagram_posts (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id        INTEGER NOT NULL UNIQUE REFERENCES videos(id),
+        account_id      TEXT NOT NULL,
+        ig_business_id  TEXT NOT NULL,
+        media_id        TEXT,
+        container_id    TEXT,
+        post_url        TEXT,
+        upload_status   TEXT NOT NULL DEFAULT 'pending' CHECK(upload_status IN (
+                            'pending', 'uploading', 'processing', 'published',
+                            'failed', 'permanently_failed'
+                        )),
+        retry_count     INTEGER DEFAULT 0,
+        max_retries     INTEGER DEFAULT 3,
+        last_error_code INTEGER,
+        last_error_msg  TEXT,
+        meta_error_type TEXT,
+        caption_text    TEXT,
+        hashtags        TEXT,
+        upload_started_at  DATETIME,
+        published_at    DATETIME,
+        created_at      DATETIME DEFAULT (datetime('now'))
+    )""",
 ]
 
 # Indexes created after migrations so all columns are guaranteed to exist.
@@ -68,6 +93,9 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quota_provider_date ON quota_usage(provider, date)",
     "CREATE INDEX IF NOT EXISTS idx_image_library_deity     ON image_library(deity_name)",
     "CREATE INDEX IF NOT EXISTS idx_image_library_tradition ON image_library(tradition)",
+    "CREATE INDEX IF NOT EXISTS idx_instagram_posts_video ON instagram_posts(video_id)",
+    "CREATE INDEX IF NOT EXISTS idx_instagram_posts_status ON instagram_posts(upload_status)",
+    "CREATE INDEX IF NOT EXISTS idx_instagram_posts_account ON instagram_posts(account_id)",
 ]
 
 

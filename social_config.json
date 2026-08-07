@@ -1,20 +1,30 @@
 {
   "platforms": {
-    "youtube": {
-      "enabled": true,
-      "daily_upload_limit": 6,
-      "api_version": "v3"
-    },
     "instagram": {
-      "enabled": false,
-      "daily_upload_limit": 25,
-      "api_version": "graph_v21"
+      "enabled": true,
+      "daily_limit": 25,
+      "rate_limit_per_hour": 60,
+      "retry_strategy": "exponential_backoff",
+      "max_retries": 3,
+      "retry_delay_base_seconds": 60,
+      "api_version": "v21.0",
+      "content_type": "reels"
     },
-    "facebook": {
+    "tiktok": {
       "enabled": false,
-      "daily_upload_limit": 25,
-      "api_version": "graph_v21"
+      "daily_limit": 10,
+      "rate_limit_per_hour": 30,
+      "max_retries": 3,
+      "api_version": "v1"
+    },
+    "youtube": {
+      "enabled": false,
+      "daily_limit": 6,
+      "rate_limit_per_hour": 3,
+      "max_retries": 3,
+      "api_version": "v3"
     }
   },
-  "accounts": []
+  "accounts": [
+  ]
 }
