@@ -29,20 +29,10 @@
       "image_prompt_rules": "Every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-ChristopherNeural",
+        "voice_pool_edge": ["en-US-ChristopherNeural", "en-US-AndrewNeural", "en-US-EricNeural"],
         "rate": "-5%",
         "volume": "+5%",
         "pitch": "+0Hz"
-      },
-      "background_audio": {
-        "enabled": true,
-        "provider": "direct_url",
-        "urls": [
-          "https://archive.org/download/SriVasudevacharyasClassChantsNarayanupanishad/Chanting-NarayanUpanishad.mp3",
-          "https://archive.org/download/PurushaSuktam-VedicCreaterCreation/PurushaSuktam.mp3",
-          "https://archive.org/download/shiv-namaskarartha-mantra-monday-special-lo-fi-version/Shiv%20Namaskarartha%20Mantra%20%20Monday%20Special%20%20LoFi%20Version.mp3",
-          "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3"
-        ],
-        "volume": 0.20
       },
       "sub_types": {
         "hindu": {
@@ -56,6 +46,7 @@
           "art_style_prompt_suffix": "dark Norse saga illustration, runic stone engravings aesthetic, muted steel blues and iron grays, dramatic stormy Nordic skies, Viking age warriors and gods, cinematic composition",
           "tts": {
             "voice_edge": "en-GB-RyanNeural",
+            "voice_pool_edge": ["en-GB-RyanNeural", "en-GB-ThomasNeural", "en-US-GuyNeural"],
             "rate": "+5%",
             "volume": "+5%",
             "pitch": "-5Hz"
@@ -64,7 +55,14 @@
         "egypt": {
           "label": "Egyptian Mythology",
           "tone": "mysterious, ancient, powerful",
-          "art_style_prompt_suffix": "Egyptian hieroglyphic art style, golden desert haze, papyrus texture backdrop, lapis lazuli and gold palette, pharaonic regalia and animal-headed gods, cinematic composition"
+          "art_style_prompt_suffix": "Egyptian hieroglyphic art style, golden desert haze, papyrus texture backdrop, lapis lazuli and gold palette, pharaonic regalia and animal-headed gods, cinematic composition",
+          "tts": {
+            "voice_edge": "en-US-EricNeural",
+            "voice_pool_edge": ["en-US-EricNeural", "en-US-AndrewNeural", "en-US-GuyNeural"],
+            "rate": "-5%",
+            "volume": "+5%",
+            "pitch": "-5Hz"
+          }
         },
         "greek": {
           "label": "Greek Mythology",
@@ -72,6 +70,7 @@
           "art_style_prompt_suffix": "ancient Greek vase painting meets epic digital art, marble white and Aegean blue palette, classical sculpture aesthetic, dramatic Olympian lighting, togas and bronze armor, cinematic composition",
           "tts": {
             "voice_edge": "en-US-GuyNeural",
+            "voice_pool_edge": ["en-US-GuyNeural", "en-US-AndrewNeural", "en-US-SteffanNeural"],
             "rate": "+5%",
             "volume": "+5%",
             "pitch": "+0Hz"
@@ -88,17 +87,10 @@
       "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-GuyNeural",
+        "voice_pool_edge": ["en-US-GuyNeural", "en-US-EricNeural", "en-US-AndrewNeural", "en-US-RogerNeural"],
         "rate": "-15%",
         "volume": "-5%",
         "pitch": "-10Hz"
-      },
-      "background_audio": {
-        "enabled": true,
-        "provider": "direct_url",
-        "urls": [
-          "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3"
-        ],
-        "volume": 0.15
       }
     },
     {
@@ -110,13 +102,10 @@
       "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-RogerNeural",
+        "voice_pool_edge": ["en-US-RogerNeural", "en-US-BrianNeural", "en-US-GuyNeural", "en-US-SteffanNeural"],
         "rate": "+10%",
         "volume": "+5%",
         "pitch": "+0Hz"
-      },
-      "background_audio": {
-        "enabled": false,
-        "volume": 0.20
       }
     },
     {
@@ -128,13 +117,10 @@
       "image_prompt_rules": "No humans. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-SteffanNeural",
+        "voice_pool_edge": ["en-US-SteffanNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
         "rate": "+0%",
         "volume": "+0%",
         "pitch": "+0Hz"
-      },
-      "background_audio": {
-        "enabled": false,
-        "volume": 0.15
       }
     },
     {
@@ -146,13 +132,10 @@
       "image_prompt_rules": "No humans. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-BrianNeural",
+        "voice_pool_edge": ["en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
         "rate": "+5%",
         "volume": "+0%",
         "pitch": "+0Hz"
-      },
-      "background_audio": {
-        "enabled": false,
-        "volume": 0.15
       }
     },
     {
@@ -164,13 +147,10 @@
       "image_prompt_rules": "No humans. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-ChristopherNeural",
+        "voice_pool_edge": ["en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-RogerNeural"],
         "rate": "+5%",
         "volume": "+5%",
         "pitch": "+0Hz"
-      },
-      "background_audio": {
-        "enabled": false,
-        "volume": 0.15
       }
     }
   ],
@@ -193,20 +173,6 @@
     "rate": "+0%",
     "volume": "+0%",
     "pitch": "+0Hz"
-  },
-  "background_audio": {
-    "enabled": false,
-    "provider": "direct_url",
-    "urls": [
-      "https://archive.org/download/SriVasudevacharyasClassChantsNarayanupanishad/Chanting-NarayanUpanishad.mp3",
-      "https://archive.org/download/PurushaSuktam-VedicCreaterCreation/PurushaSuktam.mp3",
-      "https://archive.org/download/shiv-namaskarartha-mantra-monday-special-lo-fi-version/Shiv%20Namaskarartha%20Mantra%20%20Monday%20Special%20%20LoFi%20Version.mp3",
-      "https://archive.org/download/Bhaktivedanta-Narayana/01_Manah_Siksa_18Dec93.mp3",
-      "https://archive.org/download/8HoursTibetanSingingBowlAndGongMeditation/8%20Hours%20Tibetan%20Singing%20Bowl%20and%20Gong%20Meditation.mp3",
-      "https://archive.org/download/y-2mate.com-3-hours-long-tibetan-singing-bowl-meditation-chakra-healing-third-ey/y2mate.com%20-%203%20HOURS%20Long%20Tibetan%20Singing%20Bowl%20Meditation%20Chakra%20Healing%20-%20Third%20Eye%20-%20Brow%20Chakra_Y6QTdvbu0uI.mp3"
-    ],
-    "query": "chanting meditation",
-    "volume": 0.30
   },
   "review": {
     "prescreen_enabled": false,

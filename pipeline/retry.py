@@ -38,7 +38,6 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
     from pipeline.script_gen import generate_script
     from pipeline.tts import synthesize
     from pipeline.scene_timing import compute_scene_durations
-    from pipeline.audio_bg import fetch_bg_audio
     from pipeline.ffmpeg_assembler import assemble_from_images
     from pipeline.image_library import get_library_image, LibraryEmptyError
     from pipeline.pexels_library import get_pexels_image, PexelsError
@@ -151,27 +150,6 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         )
         conn.commit()
 
-        # ── Step 3.5: Background audio (niche config overrides global) ────────
-        niche_bg = niche.get("background_audio", {})
-        bg_enabled = niche_bg.get("enabled", cfg.background_audio.get("enabled", False))
-        bg_audio_path = None
-        if bg_enabled:
-            from pipeline.audio_bg import fetch_bg_audio
-            bg_urls = niche_bg.get("urls") or cfg.background_audio.get("urls", [])
-            bg_query = niche_bg.get("query") or cfg.background_audio.get("query", "ambient")
-            bg_volume = niche_bg.get("volume", cfg.background_audio.get("volume", 0.20))
-            _orig_bg = cfg.background_audio.copy()
-            cfg.background_audio["enabled"] = True
-            cfg.background_audio["urls"] = bg_urls
-            cfg.background_audio["query"] = bg_query
-            cfg.background_audio["volume"] = bg_volume
-            bg_audio_path = fetch_bg_audio(
-                query=bg_query,
-                duration_secs=audio_dur,
-                cfg=cfg,
-            )
-            cfg.background_audio.update(_orig_bg)
-
         # ── Step 4: Assemble ─────────────────────────────────────────────────
         output_path = str(Path(cfg.paths["video"]) / f"{run_slug}.mp4")
         assemble_from_images(
@@ -180,7 +158,6 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
             output_path=output_path,
             scenes=script["scenes"],
             cfg=cfg,
-            bg_audio_path=bg_audio_path,
             word_timings_path=word_timings_path,
             scene_durations=scene_durations,
         )

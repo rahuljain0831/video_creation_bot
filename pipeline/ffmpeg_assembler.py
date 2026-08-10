@@ -434,7 +434,6 @@ def assemble_from_images(
     scenes: list[dict] | None = None,
     cfg=None,
     scene_duration: float | None = None,
-    bg_audio_path: str | None = None,
     word_timings_path: str | None = None,
     scene_durations: list[float] | None = None,
 ) -> str:
@@ -451,8 +450,6 @@ def assemble_from_images(
         scenes:        Scene dicts with "narration" key (for captions).
         cfg:           Config object (optional, for resolution/fps).
         scene_duration: Seconds per scene. If None, derived from audio length / scenes.
-        bg_audio_path: Optional path to background audio (mp3). Mixed at low volume
-                       under narration using ffmpeg filter_complex. Loops to video length.
 
     Returns:
         output_path on success.
@@ -521,32 +518,6 @@ def assemble_from_images(
 
         if audio_dur <= 0:
             _ffmpeg("-i", captioned_path, "-c", "copy", "-aspect", "9:16", output_path)
-
-        elif bg_audio_path and Path(bg_audio_path).exists():
-            bg_volume = 0.12
-            if cfg:
-                bg_volume = cfg.background_audio.get("volume", 0.12)
-            min_dur = min(total_video_dur, audio_dur)
-            log.info("Mixing bg audio: %s volume=%.2f", bg_audio_path, bg_volume)
-            _ffmpeg(
-                "-i", captioned_path,
-                "-i", audio_path,
-                "-i", bg_audio_path,
-                "-filter_complex",
-                (
-                    f"[2:a]volume={bg_volume},aloop=loop=-1:size=2000000000,"
-                    f"atrim=duration={min_dur}[bg];"
-                    f"[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-                ),
-                "-map", "0:v:0",
-                "-map", "[aout]",
-                "-c:v", "copy",
-                "-c:a", "aac", "-b:a", "128k",
-                "-t", str(min_dur),
-                "-aspect", "9:16",
-                "-movflags", "+faststart",
-                output_path,
-            )
 
         else:
             min_dur = min(total_video_dur, audio_dur)

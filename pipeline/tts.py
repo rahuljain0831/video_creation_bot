@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import subprocess
 import tempfile
 import wave
@@ -171,7 +172,12 @@ def synthesize(
 
     tts_cfg = _resolve_tts_config(cfg, niche)
     providers = tts_cfg["provider_priority"]
-    voice_edge = tts_cfg["voice_edge"]
+    # Pick random voice from pool if available, else use single voice
+    voice_pool = tts_cfg.get("voice_pool_edge")
+    if voice_pool:
+        voice_edge = random.choice(voice_pool)
+    else:
+        voice_edge = tts_cfg["voice_edge"]
     voice_piper = tts_cfg["voice_piper"]
     rate = tts_cfg["rate"]
     volume = tts_cfg["volume"]

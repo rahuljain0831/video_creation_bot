@@ -6,15 +6,37 @@
       "api_version": "v3"
     },
     "instagram": {
-      "enabled": false,
+      "enabled": true,
       "daily_upload_limit": 25,
       "api_version": "graph_v21"
     },
     "facebook": {
-      "enabled": false,
+      "enabled": true,
       "daily_upload_limit": 25,
       "api_version": "graph_v21"
     }
   },
-  "accounts": []
+  "accounts": [
+    {
+      "account_id": "mythology_yt",
+      "platform": "youtube",
+      "niche": "mythology",
+      "enabled": true,
+      "credentials_file": "credentials/mythology_yt.json"
+    },
+    {
+      "account_id": "all_niches_ig",
+      "platform": "instagram",
+      "niche": "all",
+      "enabled": true,
+      "credentials_file": "credentials/all_niches_ig.json"
+    },
+    {
+      "account_id": "all_niches_fb",
+      "platform": "facebook",
+      "niche": "all",
+      "enabled": true,
+      "credentials_file": "credentials/all_niches_ig.json"
+    }
+  ]
 }

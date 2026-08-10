@@ -277,34 +277,6 @@ def main() -> None:
         )
         conn.commit()
 
-        # ── Step 3.5: Background audio ────────────────────────────────────────
-        # Niche-level background_audio overrides global; global is fallback.
-        niche_bg = niche.get("background_audio", {})
-        bg_enabled = niche_bg.get("enabled", cfg.background_audio.get("enabled", False))
-        bg_audio_path = None
-        if bg_enabled:
-            log.info("[3.5/5] Fetching background audio...")
-            from pipeline.audio_bg import fetch_bg_audio
-            bg_urls = niche_bg.get("urls") or cfg.background_audio.get("urls", [])
-            bg_query = niche_bg.get("query") or cfg.background_audio.get("query", "ambient")
-            bg_volume = niche_bg.get("volume", cfg.background_audio.get("volume", 0.20))
-            # Temporarily override cfg for fetch_bg_audio (it reads cfg.background_audio)
-            _orig_bg = cfg.background_audio.copy()
-            cfg.background_audio["enabled"] = True
-            cfg.background_audio["urls"] = bg_urls
-            cfg.background_audio["query"] = bg_query
-            cfg.background_audio["volume"] = bg_volume
-            bg_audio_path = fetch_bg_audio(
-                query=bg_query,
-                duration_secs=audio_dur,
-                cfg=cfg,
-            )
-            cfg.background_audio.update(_orig_bg)  # restore
-            if bg_audio_path:
-                log.info("Background audio: %s", bg_audio_path)
-            else:
-                log.info("Background audio unavailable — continuing without it")
-
         # ── Step 4: Assemble video ────────────────────────────────────────────
         log.info("[4/5] Assembling video...")
         from pipeline.ffmpeg_assembler import assemble_from_images
@@ -316,7 +288,6 @@ def main() -> None:
             output_path=output_path,
             scenes=script["scenes"],
             cfg=cfg,
-            bg_audio_path=bg_audio_path,
             word_timings_path=word_timings_path,
             scene_durations=scene_durations,
         )
