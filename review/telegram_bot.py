@@ -112,6 +112,51 @@ def send_for_review(
     asyncio.run(_send_video_async(video_id, file_path, quote_text, conn))
 
 
+# ── Scheduler hook ───────────────────────────────────────────────────────────
+
+def _schedule_approved_video(video_id: int, conn: sqlite3.Connection) -> dict | None:
+    """Post-approval: upload to Drive and schedule for social media."""
+    try:
+        row = conn.execute(
+            "SELECT niche_id, file_path FROM videos WHERE id=?", (video_id,)
+        ).fetchone()
+        if not row or not row[1]:
+            log.warning("schedule: video_id=%d has no niche_id or file_path", video_id)
+            return None
+
+        niche_id, file_path = row
+        video_path = Path(file_path)
+        if not video_path.exists():
+            log.warning("schedule: video file not found: %s", file_path)
+            return None
+
+        from pipeline.drive_storage import upload_to_drive
+        from pipeline.scheduler import schedule_video
+
+        drive_file_id = upload_to_drive(video_path, folder_name="pending")
+
+        slug = video_path.stem
+        script_dir = Path(cfg.paths.get("scripts", "output/scripts"))
+        script_path = script_dir / f"{slug}.json"
+        drive_manifest_id = ""
+        if script_path.exists():
+            drive_manifest_id = upload_to_drive(script_path, folder_name="pending")
+
+        schedule_info = schedule_video(
+            video_id=video_id,
+            niche_id=niche_id,
+            drive_file_id=drive_file_id,
+            drive_manifest_id=drive_manifest_id,
+            conn=conn,
+        )
+        log.info("Scheduled video_id=%d: %s", video_id, schedule_info)
+        return schedule_info
+
+    except Exception as e:
+        log.error("schedule: failed for video_id=%d: %s", video_id, e)
+        return None
+
+
 # ── Button callback ───────────────────────────────────────────────────────────
 
 async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -138,7 +183,16 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         _pending_text[chat_id] = feedback_id
         log.info("video_id=%d approved (feedback_id=%d)", video_id, feedback_id)
 
-        label = "✅ Approved"
+        # Schedule for social media upload
+        sched_conn = sqlite3.connect(cfg.paths["db"])
+        sched_conn.execute("PRAGMA journal_mode=WAL")
+        schedule_info = _schedule_approved_video(video_id, sched_conn)
+        sched_conn.close()
+
+        if schedule_info:
+            label = f"✅ Approved | 📅 {schedule_info['platform'].title()} at {schedule_info['scheduled_at_ist']}"
+        else:
+            label = "✅ Approved"
         suffix = "<i>Reply with any notes (optional)</i>"
 
     else:
