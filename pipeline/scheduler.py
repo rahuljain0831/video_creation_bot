@@ -107,7 +107,7 @@ def pick_optimal_time(niche_id: str, platform: str, conn) -> datetime:
     ist_slots = default_times_ist.get(platform, ["17:00", "20:00", "12:00"])
     default_utc_hours = [_ist_to_utc_hour(t) for t in ist_slots]
 
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_utc = datetime.now(timezone.utc)
 
     # --- Exploration ---
     if random.random() < exploration_rate:

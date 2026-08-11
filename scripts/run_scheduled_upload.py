@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -76,6 +77,38 @@ def main():
         if r["status"] == "success":
             success = True
             post_id = r.get("video_id") or r.get("media_id", "")
+
+    # --- DB write-back: update upload_schedule status and platform_post_id ---
+    from googleapiclient.http import MediaFileUpload
+
+    db_drive_id = None
+    db_path = Path(tempfile.mkdtemp()) / "schedule.db"
+    try:
+        state_folder_id = _get_subfolder("state")
+        db_results = service.files().list(
+            q=f"'{state_folder_id}' in parents and name='schedule_db.sqlite' and trashed=false",
+            spaces="drive",
+            fields="files(id)",
+        ).execute()
+        db_files = db_results.get("files", [])
+        if db_files:
+            db_drive_id = db_files[0]["id"]
+            download_from_drive(db_drive_id, db_path)
+            conn = sqlite3.connect(str(db_path))
+            new_status = "done" if success else "failed"
+            conn.execute(
+                "UPDATE upload_schedule SET status=?, platform_post_id=? WHERE id=?",
+                (new_status, post_id, schedule_id),
+            )
+            conn.commit()
+            conn.close()
+            media = MediaFileUpload(str(db_path))
+            service.files().update(fileId=db_drive_id, media_body=media).execute()
+            log.info("Schedule DB updated: schedule_id=%d status=%s", schedule_id, new_status)
+        else:
+            log.warning("schedule_db.sqlite not found on Drive — skipping DB write-back")
+    except Exception as exc:
+        log.warning("DB write-back failed: %s", exc)
 
     dest = "uploaded" if success else "failed"
     move_drive_file(drive_file_id, dest)

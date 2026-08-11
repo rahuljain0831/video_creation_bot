@@ -84,9 +84,10 @@ def test_pick_optimal_time_uses_defaults(monkeypatch):
 
     result = sch.pick_optimal_time("mythology", "youtube", conn)
 
-    # result should be a naive datetime in the future
+    # result should be a timezone-aware datetime in the future
     assert isinstance(result, datetime)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert result.tzinfo is not None, "result must be timezone-aware"
+    now = datetime.now(timezone.utc)
     assert result > now
 
     # Hour should be one of the default youtube IST slots converted to UTC
@@ -107,8 +108,8 @@ def test_pick_optimal_time_avoids_conflicts(monkeypatch):
     _patch_cfg(monkeypatch, {"exploration_rate": 0.0, "min_gap_minutes": 30})
     conn = make_db()
 
-    # Pre-occupy the first two default youtube UTC hours for tomorrow
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(tzinfo=None)
+    # Pre-occupy the first default youtube UTC hours for tomorrow
+    tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
     default_ist = _MINIMAL_SCHEDULER_CFG["default_times_ist"]["youtube"]
     utc_hours = [_ist_to_utc_hour(t) for t in default_ist]
 
@@ -123,7 +124,8 @@ def test_pick_optimal_time_avoids_conflicts(monkeypatch):
 
     result = sch.pick_optimal_time("mythology", "youtube", conn)
 
-    # Result must not be the blocked hour (or within 30 min of it)
+    # Result must be timezone-aware and not be the blocked hour (or within 30 min of it)
+    assert result.tzinfo is not None, "result must be timezone-aware"
     diff = abs((result - blocked_dt).total_seconds() / 60)
     assert diff >= 30, f"Got slot {result} too close to blocked {blocked_dt}"
 
