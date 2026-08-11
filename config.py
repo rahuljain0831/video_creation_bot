@@ -43,6 +43,7 @@ class Config:
     script           = _settings.get("script", {})
     image_library    = _settings.get("image_library", {})
     pexels_library   = _settings.get("pexels_library", {})
+    scheduler        = _settings.get("scheduler", {})
     SOCIAL_CONFIG_PATH: str = str(Path(__file__).parent / "social_config.json")
 
 

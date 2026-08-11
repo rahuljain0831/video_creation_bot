@@ -16,6 +16,10 @@
       "api_version": "graph_v21"
     }
   },
+  "cronjob_org": {
+    "enabled": true,
+    "api_key_env": "CRONJOB_API_KEY"
+  },
   "accounts": [
     {
       "account_id": "mythology_yt",

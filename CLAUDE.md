@@ -9,6 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cp .env.example .env          # fill in API keys
 python db/init_db.py          # create output/db/agent.db from schema.sql
 
+# Scheduler setup
+python scripts/scheduler_setup.py        # verify all scheduler prerequisites
+python db/init_db.py                     # creates scheduler tables (additive migration)
+
 # Ingest your deity images (required before running the pipeline)
 python ingest_library.py --folder /path/to/images            # analyze and store all images
 python ingest_library.py --folder /path/to/images --tradition hindu  # with tradition hint
@@ -70,6 +74,21 @@ Returns `(text, model_used)`.
 **Quota tracking (`pipeline/quota_tracker.py`):** Tracks LLM provider calls (groq, cerebras).
 Pre-call: checks `quota_usage` table against `quota.json` daily_limit. Post-call: logs result.
 Daily reset runs at startup. Provider config in `quota.json`.
+
+**Upload Scheduler (`pipeline/scheduler.py`):** After Telegram approval, uploads video to
+Google Drive, picks next platform (round-robin per niche), selects optimal upload time
+(adaptive based on engagement data, falls back to research-backed defaults), and creates
+a one-time cron-job.org trigger that fires a GitHub Actions `repository_dispatch` workflow
+at the scheduled time.
+
+**Engagement Tracker (`pipeline/engagement_tracker.py`):** Daily GitHub Actions cron fetches
+view/like counts from YouTube/Instagram/Facebook APIs for recent uploads, updates
+`upload_schedule` rows, and recalculates `time_performance` rolling averages. Adaptive
+scheduling kicks in after 3+ samples per slot.
+
+**Google Drive Storage (`pipeline/drive_storage.py`):** Service account auth. Videos go to
+`video-uploads/pending/` after approval, moved to `uploaded/` or `failed/` after platform
+upload. Weekly cleanup deletes files older than 7 days.
 
 **Deity identification (`pipeline/deity_prompts.py`):** Lazy-loads `deity_prompts.json` (133
 entries) into a lookup dict. `find_deity(text, lookup)` uses word-boundary regex, checks longer

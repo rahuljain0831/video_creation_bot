@@ -7,10 +7,25 @@ Returns {} on any failure — caller must handle gracefully.
 import json
 import logging
 import re
+from pathlib import Path
 
 from llm_router import call_llm
 
 log = logging.getLogger(__name__)
+
+_BANKS_PATH = Path(__file__).parent.parent / "hashtag_banks.json"
+_banks_cache: dict | None = None
+
+
+def _load_hashtag_banks() -> dict:
+    global _banks_cache
+    if _banks_cache is not None:
+        return _banks_cache
+    if _BANKS_PATH.exists():
+        _banks_cache = json.loads(_BANKS_PATH.read_text(encoding="utf-8"))
+    else:
+        _banks_cache = {}
+    return _banks_cache
 
 _PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "pinterest", "linkedin")
 
@@ -54,7 +69,9 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"No valid JSON in LLM response: {text[:200]}")
 
 
-def generate_social_captions(script: dict, niche: dict, cfg=None) -> dict:
+def generate_social_captions(
+    script: dict, niche: dict, cfg=None, caption_variant: str | None = None
+) -> dict:
     """
     Generate platform captions and hashtags for a video script.
 
@@ -62,6 +79,7 @@ def generate_social_captions(script: dict, niche: dict, cfg=None) -> dict:
         script: generate_script() output — needs story_title + scenes[narration]
         niche:  niche config dict (uses tone key)
         cfg:    config singleton for llm_router settings
+        caption_variant: optional "A" or "B" for A/B testing (affects caption style)
 
     Returns:
         {"youtube": {"caption": str, "hashtags": [str]}, ...} for all 6 platforms.
@@ -71,6 +89,21 @@ def generate_social_captions(script: dict, niche: dict, cfg=None) -> dict:
     story_title = script.get("story_title", "Untitled")
     narration = " ".join(s.get("narration", "") for s in script.get("scenes", []))
     tone = niche.get("tone", "engaging")
+    niche_id = niche.get("id", "")
+
+    # Load hashtag bank
+    banks = _load_hashtag_banks()
+    niche_bank = banks.get(niche_id, {})
+    bank_section = ""
+    if niche_bank:
+        base_tags = " ".join(niche_bank.get("base", []))
+        bank_section = f"\nNiche hashtag bank (blend these in): {base_tags}"
+
+    # A/B variant instruction
+    variant_instruction = ""
+    if caption_variant:
+        style = "punchy and question-based" if caption_variant == "A" else "storytelling and statement-based"
+        variant_instruction = f"\nCaption style: {style}"
 
     platform_instructions = "\n".join(
         f'  "{p}": {spec}' for p, spec in _PLATFORM_SPECS.items()
@@ -80,7 +113,7 @@ def generate_social_captions(script: dict, niche: dict, cfg=None) -> dict:
 
 Title: {story_title}
 Tone: {tone}
-Script summary: {narration[:500]}
+Script summary: {narration[:500]}{bank_section}{variant_instruction}
 
 Write captions for these platforms with these requirements:
 {platform_instructions}
@@ -109,6 +142,15 @@ Respond with ONLY valid JSON, no markdown fences:
         hashtags = entry.get("hashtags", [])
         if not isinstance(hashtags, list):
             hashtags = []
+
+        # Inject niche bank tags for this platform
+        platform_bank = niche_bank.get(platform, [])
+        if platform_bank:
+            existing = set(h.lower() for h in hashtags)
+            for tag in platform_bank:
+                if tag.lower() not in existing:
+                    hashtags.append(tag)
+
         if caption:
             result[platform] = {"caption": caption, "hashtags": hashtags}
 

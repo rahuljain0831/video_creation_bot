@@ -57,6 +57,38 @@ _DDL_MIGRATIONS = [
         INSERT INTO image_library_fts(rowid, deity_name, tradition, full_description, tags)
         VALUES (new.id, new.deity_name, new.tradition, new.full_description, new.tags);
     END""",
+    """CREATE TABLE IF NOT EXISTS upload_schedule (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id        INTEGER REFERENCES videos(id),
+    platform        TEXT NOT NULL,
+    niche_id        TEXT NOT NULL,
+    scheduled_at    DATETIME NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    cronjob_id      TEXT,
+    drive_file_id   TEXT,
+    engagement_views  INTEGER,
+    engagement_likes  INTEGER,
+    platform_post_id  TEXT,
+    caption_variant   TEXT,
+    created_at      DATETIME DEFAULT (datetime('now'))
+)""",
+    """CREATE TABLE IF NOT EXISTS time_performance (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    niche_id        TEXT NOT NULL,
+    platform        TEXT NOT NULL,
+    hour_utc        INTEGER NOT NULL,
+    day_of_week     INTEGER NOT NULL,
+    avg_views       REAL DEFAULT 0.0,
+    avg_likes       REAL DEFAULT 0.0,
+    sample_count    INTEGER DEFAULT 0,
+    updated_at      DATETIME DEFAULT (datetime('now')),
+    UNIQUE(niche_id, platform, hour_utc, day_of_week)
+)""",
+    """CREATE TABLE IF NOT EXISTS platform_rotation (
+    niche_id        TEXT PRIMARY KEY,
+    last_platform   TEXT NOT NULL,
+    updated_at      DATETIME DEFAULT (datetime('now'))
+)""",
 ]
 
 # Indexes created after migrations so all columns are guaranteed to exist.
@@ -68,6 +100,10 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quota_provider_date ON quota_usage(provider, date)",
     "CREATE INDEX IF NOT EXISTS idx_image_library_deity     ON image_library(deity_name)",
     "CREATE INDEX IF NOT EXISTS idx_image_library_tradition ON image_library(tradition)",
+    "CREATE INDEX IF NOT EXISTS idx_schedule_status    ON upload_schedule(status)",
+    "CREATE INDEX IF NOT EXISTS idx_schedule_niche     ON upload_schedule(niche_id)",
+    "CREATE INDEX IF NOT EXISTS idx_schedule_time      ON upload_schedule(scheduled_at)",
+    "CREATE INDEX IF NOT EXISTS idx_timeperf_niche_plat ON time_performance(niche_id, platform)",
 ]
 
 

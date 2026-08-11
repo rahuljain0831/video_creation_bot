@@ -205,5 +205,17 @@
     "orientation": "portrait",
     "per_page": 5,
     "fallback_query": "abstract cinematic background"
+  },
+  "scheduler": {
+    "enabled": true,
+    "default_times_ist": {
+      "youtube":   ["17:00", "20:00", "12:00"],
+      "instagram": ["19:00", "21:00", "11:00"],
+      "facebook":  ["13:00", "18:00", "21:00"]
+    },
+    "min_gap_minutes": 30,
+    "exploration_rate": 0.2,
+    "trusted_sample_min": 3,
+    "github_repo": "your-username/video-creation-agent"
   }
 }

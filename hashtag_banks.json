@@ -1,0 +1,44 @@
+{
+  "mythology": {
+    "base": ["#mythology", "#ancientstories", "#gods", "#legends", "#mythical", "#epic", "#divine", "#ancienthistory"],
+    "youtube": ["#shorts", "#mythologyfacts", "#storytime"],
+    "instagram": ["#mythologylovers", "#ancientmyths", "#godsandgoddesses", "#mythologyreel"],
+    "facebook": ["#mythologyfacts", "#ancientworld"],
+    "tiktok": ["#mythologytok", "#learnontiktok", "#storytime", "#fyp"]
+  },
+  "scary_stories": {
+    "base": ["#scarystories", "#horror", "#creepy", "#paranormal", "#scary", "#darkstories", "#nightmares", "#haunted"],
+    "youtube": ["#shorts", "#horrortok", "#scaryshorts"],
+    "instagram": ["#horrorstories", "#creepypasta", "#scaryreels"],
+    "facebook": ["#horrorstories", "#paranormalstories"],
+    "tiktok": ["#horrortok", "#scarytok", "#fyp", "#creepystory"]
+  },
+  "heists": {
+    "base": ["#heist", "#crime", "#truecrime", "#robbery", "#crimestory", "#thriller", "#mastermind", "#criminalminds"],
+    "youtube": ["#shorts", "#truecrimeshorts", "#heistmovies"],
+    "instagram": ["#truecrimeaddict", "#heistmovie", "#crimereels"],
+    "facebook": ["#truecrimestories", "#crimefacts"],
+    "tiktok": ["#crimetok", "#truecrime", "#fyp", "#storytime"]
+  },
+  "space_science": {
+    "base": ["#space", "#science", "#universe", "#cosmos", "#astronomy", "#nasa", "#astrophysics", "#planets"],
+    "youtube": ["#shorts", "#spacefacts", "#scienceshorts"],
+    "instagram": ["#spacelover", "#cosmosreels", "#sciencefacts"],
+    "facebook": ["#spacescience", "#universefacts"],
+    "tiktok": ["#spacetok", "#sciencetok", "#fyp", "#learnontiktok"]
+  },
+  "ai_tech_tools": {
+    "base": ["#ai", "#tech", "#artificialintelligence", "#technology", "#machinelearning", "#coding", "#innovation", "#tools"],
+    "youtube": ["#shorts", "#techshorts", "#aitools"],
+    "instagram": ["#techreels", "#aitips", "#toolsofthetrade"],
+    "facebook": ["#techtrends", "#aiupdates"],
+    "tiktok": ["#techtok", "#aitok", "#fyp", "#techtools"]
+  },
+  "finance_facts": {
+    "base": ["#finance", "#money", "#investing", "#personalfinance", "#wealth", "#financialliteracy", "#stocks", "#economy"],
+    "youtube": ["#shorts", "#financetips", "#moneyshorts"],
+    "instagram": ["#financereels", "#moneytips", "#investingtips"],
+    "facebook": ["#financialeducation", "#moneyfacts"],
+    "tiktok": ["#fintok", "#moneytok", "#fyp", "#personalfinance"]
+  }
+}

@@ -52,8 +52,11 @@ def _exchange_for_long_lived_token(
     return data["access_token"], data.get("expires_in", 5184000)
 
 
-def _get_instagram_account_id(access_token: str) -> tuple[str, str]:
-    """Find the Instagram Business Account ID via linked Facebook Pages."""
+def _get_instagram_account_id(access_token: str) -> tuple[str, str, str]:
+    """Find the Instagram Business Account ID via linked Facebook Pages.
+
+    Returns (ig_user_id, page_name, page_id).
+    """
     # Get pages the user manages
     resp = requests.get(
         f"{GRAPH_API_BASE}/me/accounts",
@@ -77,7 +80,7 @@ def _get_instagram_account_id(access_token: str) -> tuple[str, str]:
     for page in pages:
         ig = page.get("instagram_business_account")
         if ig:
-            ig_pages.append((page["name"], ig["id"]))
+            ig_pages.append((page["name"], ig["id"], page["id"]))
 
     if not ig_pages:
         page_names = ", ".join(p["name"] for p in pages)
@@ -88,13 +91,13 @@ def _get_instagram_account_id(access_token: str) -> tuple[str, str]:
         )
 
     if len(ig_pages) == 1:
-        page_name, ig_id = ig_pages[0]
+        page_name, ig_id, page_id = ig_pages[0]
         print(f"\nFound Instagram account linked to Page '{page_name}': {ig_id}")
-        return ig_id, page_name
+        return ig_id, page_name, page_id
 
     # Multiple — let user pick
     print("\nMultiple Instagram accounts found:")
-    for i, (name, ig_id) in enumerate(ig_pages, 1):
+    for i, (name, ig_id, _page_id) in enumerate(ig_pages, 1):
         print(f"  {i}. {name} (IG ID: {ig_id})")
 
     while True:
@@ -130,6 +133,7 @@ def main() -> None:
         "       - instagram_basic\n"
         "       - instagram_content_publish\n"
         "       - pages_read_engagement\n"
+        "       - pages_manage_posts    (needed for Facebook Page video uploads)\n"
     )
 
     app_id = input("Facebook App ID: ").strip()
@@ -150,7 +154,7 @@ def main() -> None:
 
     # Step 2: Find Instagram Business Account
     print("\nLooking up Instagram Business Account...")
-    ig_user_id, page_name = _get_instagram_account_id(long_token)
+    ig_user_id, page_name, page_id = _get_instagram_account_id(long_token)
 
     # Step 3: Save credentials
     creds = {
@@ -158,6 +162,7 @@ def main() -> None:
         "app_secret": app_secret,
         "access_token": long_token,
         "ig_user_id": ig_user_id,
+        "page_id": page_id,
         "page_name": page_name,
         "expires_at": expires_at.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
