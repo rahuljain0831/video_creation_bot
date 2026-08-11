@@ -78,3 +78,35 @@ def test_returns_empty_dict_on_partial_llm_response():
     with patch("pipeline.social_captions.call_llm", return_value=(partial_json, "gemini/test")):
         result = generate_social_captions(_SCRIPT, _NICHE)
     assert result == {}
+
+
+def test_caption_variant_accepted():
+    """caption_variant kwarg should not break existing behavior."""
+    from pipeline.social_captions import generate_social_captions
+    with patch("pipeline.social_captions.call_llm", return_value=(_LLM_JSON, "gemini/test")):
+        result = generate_social_captions(_SCRIPT, _NICHE, caption_variant="A")
+    assert set(result.keys()) == {"youtube", "instagram", "facebook", "tiktok", "pinterest", "linkedin"}
+
+
+def test_hashtag_bank_injects_platform_tags():
+    """Hashtag bank tags should be appended to LLM-generated hashtags."""
+    from pipeline.social_captions import generate_social_captions
+    with patch("pipeline.social_captions.call_llm", return_value=(_LLM_JSON, "gemini/test")):
+        with patch("pipeline.social_captions._load_hashtag_banks", return_value={
+            "space_science": {
+                "base": ["#space", "#cosmos"],
+                "tiktok": ["#spacetok", "#fyp"],
+            }
+        }):
+            result = generate_social_captions(_SCRIPT, _NICHE)
+    tiktok_tags = [t.lower() for t in result["tiktok"]["hashtags"]]
+    assert "#spacetok" in tiktok_tags or "#fyp" in tiktok_tags
+
+
+def test_no_bank_file_still_works():
+    """Missing hashtag_banks.json should not break caption generation."""
+    from pipeline.social_captions import generate_social_captions
+    with patch("pipeline.social_captions._load_hashtag_banks", return_value={}):
+        with patch("pipeline.social_captions.call_llm", return_value=(_LLM_JSON, "gemini/test")):
+            result = generate_social_captions(_SCRIPT, _NICHE)
+    assert len(result) == 6
