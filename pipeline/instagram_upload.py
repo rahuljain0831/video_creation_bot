@@ -16,6 +16,8 @@ log = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
 TEMP_HOSTS = [
+    {"name": "uguu", "url": "https://uguu.se/upload", "field": "files[]"},
+    {"name": "tmpfiles", "url": "https://tmpfiles.org/api/v1/upload", "field": "file"},
     {"name": "0x0.st", "url": "https://0x0.st", "field": "file"},
     {"name": "litterbox", "url": "https://litterbox.catbox.moe/resources/internals/api.php", "field": "fileToUpload"},
 ]
@@ -51,7 +53,19 @@ def _upload_to_temp_host(video_path: Path) -> str:
                         timeout=300,
                     )
             resp.raise_for_status()
-            url = resp.text.strip()
+
+            # Parse URL from response (varies by host)
+            if host["name"] == "uguu":
+                data = resp.json()
+                url = data["files"][0]["url"]
+            elif host["name"] == "tmpfiles":
+                data = resp.json()
+                # tmpfiles.org needs /dl/ inserted for direct download
+                raw_url = data["data"]["url"]
+                url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+            else:
+                url = resp.text.strip()
+
             if url.startswith("http"):
                 log.info("Temp upload done via %s: %s", host["name"], url)
                 return url
@@ -241,7 +255,7 @@ def upload_reel(
         cover_timestamp_ms: Cover image timestamp in milliseconds
         share_to_feed: Also share to Instagram feed grid (default True)
         video_url: Public URL where the video is hosted. If not provided,
-                   the video is auto-uploaded to a temp host (24h expiry).
+                   the video is auto-uploaded to a temp host.
 
     Returns:
         Instagram media ID of the published Reel

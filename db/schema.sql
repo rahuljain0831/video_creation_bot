@@ -77,3 +77,43 @@ CREATE TABLE IF NOT EXISTS image_library (
     tags             TEXT,
     ingested_at      DATETIME DEFAULT (datetime('now'))
 );
+
+-- Upload scheduler: tracks video publishing to multiple platforms with timing.
+CREATE TABLE IF NOT EXISTS upload_schedule (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id        INTEGER REFERENCES videos(id),
+    platform        TEXT NOT NULL CHECK(platform IN ('youtube', 'instagram', 'facebook')),
+    niche_id        TEXT NOT NULL,
+    scheduled_at    DATETIME NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+                        'pending', 'uploading', 'done', 'failed'
+                    )),
+    cronjob_id      TEXT,
+    drive_file_id   TEXT,
+    engagement_views  INTEGER,
+    engagement_likes  INTEGER,
+    platform_post_id  TEXT,
+    caption_variant   TEXT CHECK(caption_variant IN ('A', 'B')),
+    created_at      DATETIME DEFAULT (datetime('now'))
+);
+
+-- Time performance metrics: per-niche, per-platform, per-hour performance data.
+CREATE TABLE IF NOT EXISTS time_performance (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    niche_id        TEXT NOT NULL,
+    platform        TEXT NOT NULL,
+    hour_utc        INTEGER NOT NULL CHECK(hour_utc BETWEEN 0 AND 23),
+    day_of_week     INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 6),
+    avg_views       REAL DEFAULT 0.0,
+    avg_likes       REAL DEFAULT 0.0,
+    sample_count    INTEGER DEFAULT 0,
+    updated_at      DATETIME DEFAULT (datetime('now')),
+    UNIQUE(niche_id, platform, hour_utc, day_of_week)
+);
+
+-- Platform rotation: track last platform used for each niche to enable round-robin.
+CREATE TABLE IF NOT EXISTS platform_rotation (
+    niche_id        TEXT PRIMARY KEY,
+    last_platform   TEXT NOT NULL CHECK(last_platform IN ('youtube', 'instagram', 'facebook')),
+    updated_at      DATETIME DEFAULT (datetime('now'))
+);
