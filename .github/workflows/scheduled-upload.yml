@@ -1,0 +1,43 @@
+name: Scheduled Video Upload
+
+on:
+  repository_dispatch:
+    types: [scheduled-upload]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write credentials files
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
+          INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
+        run: |
+          mkdir -p credentials
+          echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+          echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
+          echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+
+      - name: Run scheduled upload
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id }}
+        run: python scripts/run_scheduled_upload.py "$SCHEDULE_ID"
