@@ -37,6 +37,7 @@ jobs:
         env:
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
           DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          DRIVE_OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
           YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
           INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
         run: |
@@ -44,6 +45,9 @@ jobs:
           echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
           if [ -n "$DRIVE_OAUTH_TOKEN" ]; then
             echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
+          fi
+          if [ -n "$DRIVE_OAUTH_CREDS" ]; then
+            echo "$DRIVE_OAUTH_CREDS" > oauth_credentials.json
           fi
           if [ -n "$YOUTUBE_CREDS_JSON" ]; then
             echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
@@ -55,11 +59,7 @@ jobs:
       - name: Run scheduled upload
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
-          GOOGLE_DRIVE_AUTH: service_account
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
-          GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
-          GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
