@@ -4,6 +4,9 @@ llm_keys.json
 image_keys.json
 credentials/*.json
 client_secret*.json
+google_service_account.json
+oauth_credentials.json
+drive_token.json
 
 # Generated output (images, audio, video, DB, scripts)
 output/

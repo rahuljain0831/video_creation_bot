@@ -2,7 +2,7 @@
 Script generator — design-v3 pivot (niche-driven).
 
 Takes a niche config dict + optional story seed → produces a structured script with
-8-15 scenes, each with narration + image_prompt.
+12-25 scenes, each with narration + image_prompt.
 
 Tone is NOT auto-detected — it comes from the niche config.
 All decisions are logged to the `decisions` table BEFORE image lookup runs.
@@ -158,7 +158,9 @@ Respond with exactly this JSON structure:
 
 Use {min_scenes} to {max_scenes} scenes. Each scene is 3-8 seconds of screen time.
 Build narrative tension across scenes. Final scene should resolve or land with impact.
-Narration must be tight — total video is 45-90 seconds."""
+Narration must be tight — total video is 90-180 seconds (1.5 to 3 minutes).
+Make the story genuinely interesting: unexpected twists, real tension, vivid details.
+Avoid generic openings — hook the viewer in scene 1."""
 
     raw, model_used = call_llm(user_prompt, system=system, cfg_router=cfg_router, temperature=0.85)
 

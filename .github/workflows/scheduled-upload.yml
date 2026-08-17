@@ -1,6 +1,16 @@
 name: Scheduled Video Upload
 
 on:
+  # Run every 30 minutes to check for pending uploads
+  schedule:
+    - cron: '*/30 * * * *'
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      schedule_id:
+        description: 'Specific schedule_id to process (optional)'
+        required: false
+  # Keep repository_dispatch for backwards compat
   repository_dispatch:
     types: [scheduled-upload]
 
@@ -24,20 +34,29 @@ jobs:
       - name: Write credentials files
         env:
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
           YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
           INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
         run: |
           mkdir -p credentials
           echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
-          echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
-          echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+          if [ -n "$DRIVE_OAUTH_TOKEN" ]; then
+            echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
+          fi
+          if [ -n "$YOUTUBE_CREDS_JSON" ]; then
+            echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
+          fi
+          if [ -n "$INSTAGRAM_CREDS_JSON" ]; then
+            echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+          fi
 
       - name: Run scheduled upload
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
+          GOOGLE_DRIVE_AUTH: service_account
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id }}
-        run: python scripts/run_scheduled_upload.py "$SCHEDULE_ID"
+          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id || github.event.inputs.schedule_id || '' }}
+        run: python scripts/run_scheduled_upload.py ${SCHEDULE_ID:+"$SCHEDULE_ID"}

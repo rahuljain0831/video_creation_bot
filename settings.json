@@ -13,10 +13,10 @@
       "chunk_size": 4
     },
     "format": "mp4",
-    "min_duration_sec": 45,
-    "max_duration_sec": 90,
-    "min_scenes": 8,
-    "max_scenes": 15
+    "min_duration_sec": 90,
+    "max_duration_sec": 180,
+    "min_scenes": 12,
+    "max_scenes": 25
   },
   "input_mode": "menu",
   "niches": [
@@ -243,6 +243,6 @@
     "min_gap_minutes": 30,
     "exploration_rate": 0.2,
     "trusted_sample_min": 3,
-    "github_repo": "your-username/video-creation-agent"
+    "github_repo": "rahuljain0831/video_creation_bot"
   }
 }

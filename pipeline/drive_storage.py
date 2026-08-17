@@ -13,7 +13,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
@@ -21,16 +23,16 @@ log = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _ROOT_FOLDER_NAME = "video-uploads"
+_TOKEN_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "drive_token.json")
 
 _service_cache = None
 
 
 def _build_service():
-    """Build and cache Google Drive API service.
+    """Build and cache Google Drive API service using OAuth2 user credentials.
 
-    Reads credentials path from GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON env var.
-    Uses Credentials.from_service_account_file() with drive.file scope.
-    Caches in module-level _service_cache.
+    First run opens browser for login. Token cached in drive_token.json for reuse.
+    Falls back to service account if GOOGLE_DRIVE_AUTH=service_account.
 
     Returns:
         googleapiclient.discovery.Resource: Google Drive API service object
@@ -40,14 +42,42 @@ def _build_service():
     if _service_cache is not None:
         return _service_cache
 
-    creds_path = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON")
-    if not creds_path:
-        raise ValueError(
-            "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON env var not set. "
-            "Point to service account JSON file."
-        )
+    # Check for service account override
+    if os.getenv("GOOGLE_DRIVE_AUTH") == "service_account":
+        from google.oauth2.service_account import Credentials as SACredentials
+        creds_path = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON")
+        if not creds_path:
+            raise ValueError("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON env var not set.")
+        creds = SACredentials.from_service_account_file(creds_path, scopes=_SCOPES)
+        _service_cache = build("drive", "v3", credentials=creds)
+        return _service_cache
 
-    creds = Credentials.from_service_account_file(creds_path, scopes=_SCOPES)
+    # OAuth2 user credentials
+    creds = None
+    if os.path.exists(_TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(_TOKEN_PATH, _SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            oauth_creds = os.getenv(
+                "GOOGLE_DRIVE_OAUTH_JSON",
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "oauth_credentials.json"),
+            )
+            if not os.path.exists(oauth_creds):
+                raise ValueError(
+                    f"OAuth credentials not found at {oauth_creds}. "
+                    "Download from Google Cloud Console → Credentials → OAuth client ID."
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(oauth_creds, _SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        # Save token for reuse
+        with open(_TOKEN_PATH, "w") as f:
+            f.write(creds.to_json())
+        log.info("Drive OAuth token saved to %s", _TOKEN_PATH)
+
     _service_cache = build("drive", "v3", credentials=creds)
     return _service_cache
 
@@ -90,8 +120,17 @@ def _get_or_create_folder(name: str, parent_id: str | None = None) -> str:
     return folder["id"]
 
 
+def _get_root_folder_id() -> str:
+    """Return root folder ID — prefers GOOGLE_DRIVE_FOLDER_ID env var (shared folder),
+    falls back to creating/finding a 'video-uploads' folder."""
+    shared_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    if shared_id:
+        return shared_id
+    return _get_or_create_folder(_ROOT_FOLDER_NAME)
+
+
 def _get_subfolder(subfolder: str) -> str:
-    """Get ID for video-uploads/<subfolder>, creating both root and sub if needed.
+    """Get ID for <root>/<subfolder>, creating sub if needed.
 
     Args:
         subfolder: Subfolder name (e.g., "pending", "uploaded", "failed")
@@ -99,7 +138,7 @@ def _get_subfolder(subfolder: str) -> str:
     Returns:
         str: Subfolder ID
     """
-    root_id = _get_or_create_folder(_ROOT_FOLDER_NAME)
+    root_id = _get_root_folder_id()
     sub_id = _get_or_create_folder(subfolder, parent_id=root_id)
     return sub_id
 
