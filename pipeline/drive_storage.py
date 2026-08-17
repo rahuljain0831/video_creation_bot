@@ -179,8 +179,27 @@ def upload_to_drive(local_path: Path, folder_name: str = "pending") -> str:
 
     media = MediaFileUpload(str(local_path), resumable=True)
     file_obj = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    file_id = file_obj["id"]
 
-    return file_obj["id"]
+    # If uploading via OAuth, share with service account so CI can access
+    sa_json = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "")
+    if os.getenv("GOOGLE_DRIVE_AUTH") != "service_account" and sa_json:
+        try:
+            import json
+            sa_path = sa_json if os.path.exists(sa_json) else None
+            if sa_path:
+                sa_email = json.loads(open(sa_path).read()).get("client_email", "")
+                if sa_email:
+                    service.permissions().create(
+                        fileId=file_id,
+                        body={"type": "user", "role": "reader", "emailAddress": sa_email},
+                        fields="id",
+                        sendNotificationEmail=False,
+                    ).execute()
+        except Exception:
+            pass  # best-effort, don't block upload
+
+    return file_id
 
 
 def download_from_drive(file_id: str, dest_path: Path) -> Path:
