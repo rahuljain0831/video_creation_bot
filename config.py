@@ -43,6 +43,9 @@ class Config:
     script           = _settings.get("script", {})
     image_library    = _settings.get("image_library", {})
     pexels_library   = _settings.get("pexels_library", {})
+    prompt_refiner   = _settings.get("prompt_refiner", {})
+    image_gen        = _settings.get("image_gen", {})
+    comfyui          = _settings.get("comfyui", {})
     scheduler        = _settings.get("scheduler", {})
     SOCIAL_CONFIG_PATH: str = str(Path(__file__).parent / "social_config.json")
 

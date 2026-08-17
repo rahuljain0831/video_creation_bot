@@ -186,6 +186,13 @@ def find_best_image_for_scene(
         log.info("deity_map: FTS fallback matched %d image(s)", len(fts_results))
         return fts_results[0]
 
+    # Step 5: If all images excluded (library smaller than scene count), retry without exclusions
+    if exclude_ids:
+        log.info("deity_map: all images excluded, retrying without exclude_ids (allowing reuse)")
+        fts_results = search_library(scene_prompt, niche, conn, limit=5, exclude_ids=None)
+        if fts_results:
+            return fts_results[0]
+
     log.info("deity_map: no match found, returning None (library may be empty)")
     return None
 

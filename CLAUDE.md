@@ -51,7 +51,25 @@ optionally provides a story seed, and the pipeline runs end-to-end.
    Tone comes from niche config in `settings.json`. Each scene gets `narration` (for TTS)
    and `image_prompt` (for library lookup). All decisions are written to the `decisions` DB
    table before any image lookup runs.
-2. `pipeline/image_library.py` + `pipeline/deity_map.py` — selects best matching image from
+2. Scene images — source per niche via `image_source` in `settings.json`:
+   `library` (curated deity images), `pexels` (stock retrieval), `generate`
+   (cloud image APIs → local ComfyUI fallback), `comfyui` (local only).
+
+   **Image policy (`pipeline/image_policy.py`), enforced in code, not prompts:**
+   - Niches with `allow_local_generation: false` (mythology) never run local
+     generation. `resolve_image_source()` downgrades a local-only source to
+     `library`; `comfyui_gen` and `image_gen` raise `LocalGenerationBlocked`.
+   - Generated images contain no human figures. Human-referring comma chunks are
+     stripped from the positive prompt and pushed into the negative prompt
+     (`apply_no_human_policy`). Kills distorted hands/faces. Toggle:
+     `image_gen.no_humans` in `settings.json`.
+
+   **`pipeline/image_gen.py`** — provider chain read from `image_keys.json`
+   (top-to-bottom = priority, same shape as `llm_keys.json`): gemini →
+   together_ai → huggingface → pollinations (keyless), then local ComfyUI.
+   Verify with `python scripts/test_image_gen.py [--live]`.
+
+   `pipeline/image_library.py` + `pipeline/deity_map.py` — selects best matching image from
    the user-provided library for each scene.
    Strategy per scene:
      a. Detect deity name in image_prompt via `deity_prompts.find_deity()`

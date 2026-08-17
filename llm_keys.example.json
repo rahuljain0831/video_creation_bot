@@ -1,0 +1,59 @@
+{
+  "_comment": "LLM provider keys — order = priority (top tried first). Remove or empty api_key to skip.",
+  "gemini": {
+    "api_key": "",
+    "models": [
+      "gemini/gemini-3.5-flash",
+      "gemini/gemini-3-flash-preview",
+      "gemini/gemini-3.1-flash-lite"
+    ]
+  },
+  "cerebras": {
+    "api_key": "",
+    "models": [
+      "cerebras/llama-3.3-70b"
+    ]
+  },
+  "groq": {
+    "api_key": "",
+    "models": [
+      "groq/llama-3.3-70b-versatile"
+    ]
+  },
+  "xai": {
+    "api_key": "",
+    "models": [
+      "xai/grok-3-mini-fast"
+    ]
+  },
+  "perplexity": {
+    "api_key": "",
+    "models": [
+      "perplexity/sonar"
+    ]
+  },
+  "nvidia_nim": {
+    "api_key": "",
+    "models": [
+      "nvidia_nim/meta/llama-3.3-70b-instruct"
+    ]
+  },
+  "openrouter": {
+    "api_key": "",
+    "models": [
+      "openrouter/meta-llama/llama-3.3-70b-instruct"
+    ]
+  },
+  "together_ai": {
+    "api_key": "",
+    "models": [
+      "together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    ]
+  },
+  "sambanova": {
+    "api_key": "",
+    "models": [
+      "sambanova/Meta-Llama-3.3-70B-Instruct"
+    ]
+  }
+}

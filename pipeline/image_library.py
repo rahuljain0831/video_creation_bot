@@ -423,6 +423,10 @@ def get_library_image(
     else:
         candidates = search_library(image_prompt, niche, conn, exclude_ids=used_image_ids)
 
+    # If all images excluded (library smaller than scene count), allow reuse
+    if not candidates and used_image_ids:
+        candidates = search_library(image_prompt, niche, conn, exclude_ids=None)
+
     if not candidates:
         raise LibraryEmptyError(
             "Image library is empty. Run: python ingest_library.py --folder <path>"

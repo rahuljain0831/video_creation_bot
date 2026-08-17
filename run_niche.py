@@ -198,22 +198,46 @@ def main() -> None:
             conn.commit()
             return
 
-        # ── Step 2: Fetch images from library ─────────────────────────────────
-        log.info("[2/5] Fetching scene images from library...")
+        # ── Resolve image source (policy-checked) ────────────────────────────
+        from pipeline.image_policy import GENERATED_SOURCES, resolve_image_source
+        _image_source = resolve_image_source(niche)
+        _is_generated = _image_source in GENERATED_SOURCES
+
+        # ── Step 1.5: Refine image prompts (optional) ────────────────────────
+        if cfg.prompt_refiner.get("enabled", False):
+            log.info("[1.5/5] Refining image prompts...")
+            from pipeline.prompt_refiner import refine_image_prompts
+            _refine_target = "generation" if _is_generated else "search"
+            script["scenes"] = refine_image_prompts(
+                script["scenes"], niche, target=_refine_target, cfg=cfg,
+            )
+
+        # ── Step 2: Fetch images ─────────────────────────────────────────────
+        log.info("[2/5] Fetching scene images (source=%s)...", _image_source)
         from pipeline.image_library import get_library_image, LibraryEmptyError
         from pipeline.deity_map import find_best_image_for_scene
         from pipeline.pexels_library import get_pexels_image, PexelsError
+        from pipeline.image_gen import generate_image, ImageGenError
+        from pipeline.image_policy import LocalGenerationBlocked
 
         images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths: list[str] = []
-        _use_pexels = niche.get("image_source", "library") == "pexels"
         _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
         _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
 
         for i, scene in enumerate(script["scenes"]):
             log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
             try:
-                if _use_pexels:
+                if _is_generated:
+                    img_path = generate_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        cfg=cfg,
+                        local_only=(_image_source == "comfyui"),
+                    )
+                elif _image_source == "pexels":
                     fallback_q = cfg.pexels_library.get("fallback_query", "abstract cinematic background")
                     img_path = get_pexels_image(
                         image_prompt=scene["image_prompt"],
@@ -247,6 +271,18 @@ def main() -> None:
                 return
             except PexelsError as e:
                 log.error("Pexels image fetch failed for scene %d: %s", i, e)
+                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+                conn.commit()
+                return
+            except LocalGenerationBlocked as e:
+                log.error("Image generation blocked by niche policy for scene %d: %s", i, e)
+                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+                conn.commit()
+                return
+            except ImageGenError as e:
+                log.error("Image generation failed for scene %d: %s", i, e)
+                log.error("Configure providers in image_keys.json (see image_keys.example.json) "
+                          "or start ComfyUI for the local fallback.")
                 conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
                 conn.commit()
                 return

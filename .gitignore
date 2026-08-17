@@ -1,5 +1,7 @@
 # Secrets
 .env
+llm_keys.json
+image_keys.json
 credentials/*.json
 client_secret*.json
 

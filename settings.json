@@ -24,6 +24,7 @@
       "id": "mythology",
       "label": "Mythology",
       "image_source": "library",
+      "allow_local_generation": false,
       "tone": "dramatic, awe-inspiring",
       "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition",
       "image_prompt_rules": "Every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.",
@@ -81,10 +82,11 @@
     {
       "id": "scary_stories",
       "label": "Scary Stories",
-      "image_source": "pexels",
+      "image_source": "generate",
+      "allow_local_generation": true,
       "tone": "suspenseful, unsettling",
       "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition",
-      "image_prompt_rules": "Avoid detailed human faces in close-up. Prefer silhouettes, shadows, fog, empty interiors, and implied threat over explicit figures. Specify the main subject or setting prominently in the foreground.",
+      "image_prompt_rules": "No humans, no human figures, no faces, no hands — images are generated and human anatomy distorts. Use empty interiors, shadows, fog, objects, doorways, and implied threat instead. Specify the main subject or setting prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-GuyNeural",
         "voice_pool_edge": ["en-US-GuyNeural", "en-US-EricNeural", "en-US-AndrewNeural", "en-US-RogerNeural"],
@@ -96,10 +98,11 @@
     {
       "id": "heists",
       "label": "Heists",
-      "image_source": "pexels",
+      "image_source": "generate",
+      "allow_local_generation": true,
       "tone": "tense, stylish, high-stakes",
       "art_style_prompt_suffix": "sleek noir-thriller digital painting, high contrast, cinematic composition",
-      "image_prompt_rules": "Avoid detailed human faces. Focus on vaults, cash, blueprints, vehicles, cityscapes at night, silhouettes in motion. Specify the main subject prominently in the foreground.",
+      "image_prompt_rules": "No humans, no human figures, no faces, no hands — images are generated and human anatomy distorts. Focus on vaults, cash, blueprints, tools, vehicles, empty corridors, cityscapes at night. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-RogerNeural",
         "voice_pool_edge": ["en-US-RogerNeural", "en-US-BrianNeural", "en-US-GuyNeural", "en-US-SteffanNeural"],
@@ -113,8 +116,9 @@
       "label": "Space & Science",
       "tone": "awe-inspiring, curious, grand",
       "art_style_prompt_suffix": "cosmic nebula deep space photography cinematic",
-      "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground.",
+      "image_source": "generate",
+      "allow_local_generation": true,
+      "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-SteffanNeural",
         "voice_pool_edge": ["en-US-SteffanNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
@@ -128,8 +132,9 @@
       "label": "AI & Tech Tools",
       "tone": "sharp, practical, forward-looking",
       "art_style_prompt_suffix": "modern technology screen interface minimal cinematic",
-      "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground.",
+      "image_source": "generate",
+      "allow_local_generation": true,
+      "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-BrianNeural",
         "voice_pool_edge": ["en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
@@ -143,8 +148,9 @@
       "label": "Finance Facts",
       "tone": "confident, clear, high-value",
       "art_style_prompt_suffix": "finance business city skyline charts cinematic",
-      "image_source": "pexels",
-      "image_prompt_rules": "No humans. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground.",
+      "image_source": "generate",
+      "allow_local_generation": true,
+      "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-ChristopherNeural",
         "voice_pool_edge": ["en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-RogerNeural"],
@@ -155,10 +161,6 @@
     }
   ],
   "llm_router": {
-    "primary":        "gemini/gemini-3.5-flash",
-    "fallback_1":     "gemini/gemini-3-flash-preview",
-    "fallback_2":     "gemini/gemini-3.1-flash-lite",
-    "local_fallback": "ollama/llama3.1:8b",
     "timeout_seconds": 60
   },
   "script": {
@@ -184,7 +186,10 @@
   },
   "ollama": {
     "base_url": "http://localhost:11434",
-    "num_gpu": 0
+    "num_gpu": 0,
+    "auto_start": true,
+    "model": "llama3.1:8b",
+    "startup_timeout_seconds": 30
   },
   "paths": {
     "db":      "output/db/agent.db",
@@ -205,6 +210,28 @@
     "orientation": "portrait",
     "per_page": 5,
     "fallback_query": "abstract cinematic background"
+  },
+  "prompt_refiner": {
+    "enabled": false
+  },
+  "image_gen": {
+    "width": 720,
+    "height": 1280,
+    "timeout_seconds": 120,
+    "no_humans": true,
+    "local_fallback": true,
+    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, ugly, missing limb, long neck, out of frame, watermark, text"
+  },
+  "comfyui": {
+    "base_url": "http://127.0.0.1:8188",
+    "workflow_path": "config/comfyui_workflow.json",
+    "default_checkpoint": "Realistic_Vision_V5.1_fp16-no-ema.safetensors",
+    "steps": 25,
+    "cfg_scale": 7,
+    "width": 512,
+    "height": 768,
+    "timeout_seconds": 120,
+    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, poorly drawn face, mutation, extra limb, ugly, poorly drawn hands, missing limb, long neck, out of frame"
   },
   "scheduler": {
     "enabled": true,

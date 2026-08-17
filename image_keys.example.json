@@ -1,0 +1,25 @@
+{
+  "_comment": "Image generation provider keys — order = priority (top tried first). Empty api_key = provider skipped, except keyless ones. Copy to image_keys.json. Local ComfyUI runs only if every provider here fails.",
+  "gemini": {
+    "type": "gemini",
+    "api_key": "",
+    "model": "gemini-2.5-flash-image"
+  },
+  "together_ai": {
+    "type": "together_ai",
+    "api_key": "",
+    "model": "black-forest-labs/FLUX.1-schnell-Free",
+    "steps": 4
+  },
+  "huggingface": {
+    "type": "huggingface",
+    "api_key": "",
+    "model": "black-forest-labs/FLUX.1-schnell"
+  },
+  "pollinations": {
+    "type": "pollinations",
+    "api_key": "",
+    "keyless": true,
+    "model": "flux"
+  }
+}
