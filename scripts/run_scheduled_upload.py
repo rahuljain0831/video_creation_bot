@@ -107,6 +107,7 @@ def find_due_manifests(service):
         q=f"'{folder_id}' in parents and name contains '_schedule.json' and trashed=false",
         spaces="drive",
         fields="files(id, name)",
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
     ).execute()
 
     now_utc = datetime.now(timezone.utc)
@@ -150,6 +151,7 @@ def main():
             q=f"'{folder_id}' in parents and name contains '_schedule.json' and trashed=false",
             spaces="drive",
             fields="files(id, name)",
+            includeItemsFromAllDrives=True, supportsAllDrives=True,
         ).execute()
 
         tmp_dir = Path(tempfile.mkdtemp())

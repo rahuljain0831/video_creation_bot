@@ -101,8 +101,11 @@ def _get_or_create_folder(name: str, parent_id: str | None = None) -> str:
 
     query = " and ".join(query_parts)
 
-    # Query for existing folder
-    results = service.files().list(q=query, spaces="drive", fields="files(id)", pageSize=1).execute()
+    # Query for existing folder (includeItemsFromAllDrives lets SA find shared folders)
+    results = service.files().list(
+        q=query, spaces="drive", fields="files(id)", pageSize=1,
+        includeItemsFromAllDrives=True, supportsAllDrives=True,
+    ).execute()
     files = results.get("files", [])
 
     if files:
@@ -132,12 +135,21 @@ def _get_root_folder_id() -> str:
 def _get_subfolder(subfolder: str) -> str:
     """Get ID for <root>/<subfolder>, creating sub if needed.
 
+    Supports env var overrides: GOOGLE_DRIVE_PENDING_ID, GOOGLE_DRIVE_UPLOADED_ID,
+    GOOGLE_DRIVE_FAILED_ID — needed when service account can't discover shared folders
+    via parent query.
+
     Args:
         subfolder: Subfolder name (e.g., "pending", "uploaded", "failed")
 
     Returns:
         str: Subfolder ID
     """
+    env_key = f"GOOGLE_DRIVE_{subfolder.upper()}_ID"
+    env_id = os.getenv(env_key)
+    if env_id:
+        return env_id
+
     root_id = _get_root_folder_id()
     sub_id = _get_or_create_folder(subfolder, parent_id=root_id)
     return sub_id
