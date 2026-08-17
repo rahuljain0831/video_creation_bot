@@ -1,9 +1,11 @@
 name: Scheduled Video Upload
 
 on:
-  # Run every 30 minutes to check for pending uploads
+  # Run ~every 1.5h during peak upload window (05:30–16:00 UTC / 11:00–21:30 IST)
+  # 8 runs/day — fits comfortably in GitHub Actions free tier
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '30 5,8,11,14 * * *'
+    - cron: '0 7,10,13,16 * * *'
   # Manual trigger for testing
   workflow_dispatch:
     inputs:

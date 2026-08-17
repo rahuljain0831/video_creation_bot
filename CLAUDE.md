@@ -43,7 +43,7 @@ pytest -m "not slow"     # skip video-writing / network tests
 
 ## Architecture
 
-**Entry point:** `run_niche.py` — user selects a niche (Mythology / Scary Stories / Heists),
+**Entry point:** `run_niche.py` — user selects a niche (Mythology / Scary Stories / Heists / Space & Science / AI & Tech Tools / Finance Facts),
 optionally provides a story seed, and the pipeline runs end-to-end.
 
 **Pipeline (in order):**
@@ -84,6 +84,9 @@ optionally provides a story seed, and the pipeline runs end-to-end.
    image, concatenates clips, burns captions, mixes audio into 9:16 mp4.
    Entry point: `assemble_from_images()`.
 6. `review/telegram_bot.py` — sends video + story metadata for manual review.
+7. After Telegram approval, `pipeline/scheduler.py` handles Google Drive upload, platform selection
+   (round-robin per niche via `platform_rotation` table), optimal time scheduling (adaptive from
+   `time_performance` data), and cron-job.org triggers for GitHub Actions `repository_dispatch`.
 
 **LLM routing (`llm_router.py`):** `call_llm()` tries Groq → Cerebras → Google AI Studio →
 Ollama local in order. Provider order is configured in `settings.json` under `llm_router`.
@@ -136,13 +139,16 @@ LLM fallback order, niche definitions, and image library settings.
 
 **Database (`output/db/agent.db`):** SQLite, initialized by `db/init_db.py`. Key tables:
 - `videos` — one row per video, tracks full status lifecycle
-  (`queued → bg_ready → voice_ready → assembled → sent → approved/rejected`)
+  (`queued → bg_ready → voice_ready → assembled → screened → sent → approved → posted / rejected / permanently_rejected`; also: `waiting_quota`)
 - `decisions` — all script and routing decisions logged with reasoning
 - `feedback` — manual verdicts from Telegram review (good/bad + tags)
 - `quota_usage` — daily LLM quota tracking per provider (groq, cerebras)
 - `quota_reset_log` — tracks when quota was last reset per (provider, interval)
 - `image_library` — user-provided images with Gemini Vision metadata
 - `image_library_fts` — FTS5 virtual table synced to image_library via triggers
+- `upload_schedule` — tracks video publishing to platforms (youtube/instagram/facebook) with scheduling, engagement metrics, and A/B caption testing
+- `time_performance` — per-niche, per-platform, per-hour engagement averages for adaptive scheduling
+- `platform_rotation` — tracks last platform used per niche for round-robin distribution
 
 **Deity prompts file (`deity_prompts.json`):** 133 entries covering major Hindu deities and
 their avatars/scenes. Each entry has: deity_name, aliases, tradition, visual_details,
@@ -159,6 +165,73 @@ All API keys go in `.env` (see `.env.example`). `GOOGLE_AI_STUDIO_API_KEY` is us
 Gemini (LLM fallback) and for Gemini Vision during image library ingestion.
 Ollama must be running locally (`http://localhost:11434`) for the local LLM fallback.
 
+Scheduler keys: `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`, `CRONJOB_API_KEY`, `GITHUB_DISPATCH_TOKEN`.
+Engagement keys: `INSTAGRAM_ACCESS_TOKEN`, `FACEBOOK_PAGE_ACCESS_TOKEN`.
+Image gen: `PEXELS_API_KEY`, `HF_API_TOKEN`.
+
 Output artifacts: `output/images/`, `output/audio/`, `output/video/`, `output/scripts/`.
 Database: `output/db/agent.db`. Logs: `output/logs/`.
 Provider quota config: `quota.json` (root, LLM providers only).
+
+Key `settings.json` defaults: `video.min_duration_sec` / `max_duration_sec` = 90–180s;
+`video.min_scenes` / `max_scenes` = 12–25; `image_library.vision_model` = `gemini-2.0-flash`.
+
+## Project Structure
+
+```
+pipeline/
+  script_gen.py         — LLM script generation
+  image_policy.py       — image source resolution and human-figure blocking
+  image_library.py      — DB-backed image retrieval
+  image_gen.py          — cloud image generation provider chain
+  comfyui_gen.py        — local ComfyUI image generation client
+  deity_prompts.py      — deity name lookup from deity_prompts.json
+  deity_map.py          — deity-to-image-library bridge
+  pexels_library.py     — Pexels stock photo search for non-mythology niches
+  tts.py                — local TTS (Edge TTS / Piper / Kokoro)
+  audio_bg.py           — background audio fetch and mix
+  ffmpeg_assembler.py   — Ken Burns + caption burn + audio mix → mp4
+  scene_timing.py       — per-scene duration calculation from audio
+  quota_tracker.py      — LLM provider quota tracking
+  scheduler.py          — upload scheduling: Drive upload + cron-job.org + GitHub Actions
+  engagement_tracker.py — fetch engagement metrics and update time_performance
+  drive_storage.py      — Google Drive service account upload/cleanup
+  social_accounts.py    — social media account configuration
+  social_captions.py    — A/B caption generation for social uploads
+  youtube_upload.py     — YouTube Data API v3 video upload
+  instagram_upload.py   — Instagram Graph API reel publishing
+  facebook_upload.py    — Facebook Graph API video publishing
+  prompt_refiner.py     — LLM-based image prompt refinement (optional)
+  retry.py              — exponential backoff retry decorator
+
+scripts/
+  scheduler_setup.py          — verify scheduler prerequisites
+  run_scheduled_upload.py     — execute a scheduled platform upload (called by GitHub Actions)
+  run_drive_cleanup.py        — delete old Drive files (called by GitHub Actions)
+  run_engagement_fetch.py     — fetch engagement data (called by GitHub Actions)
+  upload_youtube.py           — manual YouTube upload CLI
+  upload_all_platforms.py     — upload to all platforms at once
+  schedule_all_platforms.py   — schedule uploads for all platforms
+  youtube_auth_setup.py       — OAuth2 setup for YouTube
+  instagram_auth_setup.py     — Instagram auth token setup
+  meta_token_exchange.py      — exchange short-lived Meta token for long-lived
+  batch_generate.py           — generate multiple videos in batch
+  test_image_gen.py           — test image generation providers
+  test_prompt_refiner.py      — test prompt refiner
+  test_comfyui.py             — test ComfyUI connection
+
+.github/workflows/
+  scheduled-upload.yml        — GitHub Actions: execute scheduled platform upload
+  engagement-fetch.yml        — GitHub Actions: daily engagement data collection
+  drive-cleanup.yml           — GitHub Actions: weekly Drive file cleanup
+
+agent/
+  decisions.py                — decision logging helpers
+  prescreener.py              — automated video quality prescreening
+
+feedback/
+  parser.py                   — parse Telegram feedback into structured tags
+
+worker.py                     — background worker for pipeline execution
+wait_for_review.py            — poll for Telegram review verdict
+```
