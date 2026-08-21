@@ -82,8 +82,147 @@ def _save_script(
         "script":     script,
     }
     out = scripts_dir / f"{run_slug}.json"
-    out.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    # encoding is explicit: ensure_ascii=False emits curly quotes and dashes,
+    # and Path.write_text would otherwise use the Windows ANSI codepage, making
+    # the file unreadable by anything expecting UTF-8 (including this pipeline).
+    out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("Script saved: %s", out)
+
+
+def _fetch_scene_images(
+    script: dict,
+    niche: dict,
+    conn: sqlite3.Connection,
+    cfg,
+    video_id: int,
+    run_slug: str,
+    image_source: str,
+    is_generated: bool,
+) -> list[str] | None:
+    """
+    Source one image per scene. Returns None when the run should be abandoned —
+    the caller marks the video rejected.
+
+    Not reached at all for procedural niches, which have no image stage.
+    """
+    from pipeline.image_library import get_library_image, LibraryEmptyError
+    from pipeline.deity_map import find_best_image_for_scene
+    from pipeline.pexels_library import get_pexels_image, PexelsError
+    from pipeline.image_gen import build_style_token, generate_image, ImageGenError
+    from pipeline.image_policy import LocalGenerationBlocked
+    from pipeline.image_post import ensure_render_size, is_worth_cutting_to
+
+    images_dir = str(Path(cfg.paths["images"]) / run_slug)
+    render_w, render_h = (cfg.video.get("resolution") or [1080, 1920])[:2]
+
+    # One look for the whole video, one seed per scene derived from the run's.
+    style_token = build_style_token(video_id) if is_generated else ""
+    if style_token:
+        log.info("  Style token: %s", style_token)
+
+    scene_image_paths: list[str] = []
+    _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
+    _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
+
+    for i, scene in enumerate(script["scenes"]):
+        log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
+        try:
+            if is_generated:
+                img_path = generate_image(
+                    image_prompt=scene["image_prompt"],
+                    niche=niche,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    cfg=cfg,
+                    local_only=(image_source == "comfyui"),
+                    shot=scene.get("shot", ""),
+                    style_token=style_token,
+                    seed=video_id * 1000 + i,
+                )
+            elif image_source == "pexels":
+                fallback_q = cfg.pexels_library.get("fallback_query", "abstract cinematic background")
+                img_path = get_pexels_image(
+                    image_prompt=scene["image_prompt"],
+                    niche=niche,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    fallback_query=fallback_q,
+                    used_photo_ids=_used_pexels_ids,
+                )
+            else:
+                img_row = find_best_image_for_scene(
+                    scene["image_prompt"], niche, conn, cfg,
+                    exclude_ids=_used_library_ids,
+                )
+                img_path = get_library_image(
+                    image_prompt=scene["image_prompt"],
+                    niche=niche,
+                    conn=conn,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    video_id=video_id,
+                    cfg=cfg,
+                    preselected_row=img_row if img_row else None,
+                    used_image_ids=_used_library_ids,
+                )
+        except LibraryEmptyError as e:
+            log.error("Image library empty for scene %d: %s", i, e)
+            log.error("Run: python ingest_library.py --folder <path_to_images>")
+            return None
+        except PexelsError as e:
+            log.error("Pexels image fetch failed for scene %d: %s", i, e)
+            return None
+        except LocalGenerationBlocked as e:
+            log.error("Image generation blocked by niche policy for scene %d: %s", i, e)
+            return None
+        except ImageGenError as e:
+            log.error("Image generation failed for scene %d: %s", i, e)
+            log.error("Configure providers in image_keys.json (see image_keys.example.json) "
+                      "or start ComfyUI for the local fallback.")
+            return None
+
+        # Whatever the provider actually returned, the renderer gets the render
+        # resolution. Otherwise Remotion upscales a 576-wide source by ~2.2x.
+        #
+        # Generated images only. Library and Pexels images are already full-size
+        # and have their own framing; centre-cropping a curated deity image to
+        # 9:16 here would cut the subject out of it.
+        if is_generated:
+            img_path = ensure_render_size(img_path, render_w, render_h)
+
+        scene_image_paths.append(img_path)
+        log.info("  Scene %d → %s", i + 1, img_path)
+
+        # Second image for this beat: gives the mid-beat cut a real cut rather
+        # than a crop change. Optional by design — a failure here costs one hard
+        # cut, never the run.
+        reveal_prompt = scene.get("reveal_prompt", "") if is_generated else ""
+        if reveal_prompt:
+            try:
+                b_path = generate_image(
+                    image_prompt=reveal_prompt,
+                    niche=niche,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    cfg=cfg,
+                    local_only=(image_source == "comfyui"),
+                    shot="detail",
+                    style_token=style_token,
+                    seed=video_id * 1000 + i + 500,
+                    name_suffix="_b",
+                )
+                b_path = ensure_render_size(b_path, render_w, render_h)
+                # Vetted, not trusted: this image lands mid-beat on impact,
+                # reveal and scare, and an empty one turns the payoff shot into
+                # a few seconds of fog. A tighter crop of the primary beats
+                # cutting to nothing.
+                if is_worth_cutting_to(b_path, img_path):
+                    scene["_image_b"] = b_path
+                    log.info("  Scene %d reveal → %s", i + 1, b_path)
+            except (ImageGenError, LocalGenerationBlocked) as e:
+                log.warning("  Scene %d reveal image failed (%s) — single image beat", i + 1, e)
+
+    return scene_image_paths
 
 
 def _startup_quota_reset(conn: sqlite3.Connection) -> None:
@@ -184,7 +323,11 @@ def main() -> None:
         log.info("Script: title=%r scenes=%d", script["story_title"], script["scene_count"])
         for i, scene in enumerate(script["scenes"], 1):
             log.info("  Scene %d narration : %s", i, scene["narration"])
-            log.info("  Scene %d image_prompt: %s", i, scene["image_prompt"][:80])
+            if "visual" in scene:
+                log.info("  Scene %d visual     : %s %s",
+                         i, scene["visual"], (scene.get("accent") or "").strip())
+            else:
+                log.info("  Scene %d image_prompt: %s", i, scene.get("image_prompt", "")[:80])
 
         run_slug = _make_slug(niche["id"], script["story_title"], video_id)
         log.info("Run slug: %s", run_slug)
@@ -199,112 +342,76 @@ def main() -> None:
             return
 
         # ── Resolve image source (policy-checked) ────────────────────────────
-        from pipeline.image_policy import GENERATED_SOURCES, resolve_image_source
+        from pipeline.image_policy import (
+            GENERATED_SOURCES, is_procedural, resolve_image_source,
+        )
+        _procedural   = is_procedural(niche)
         _image_source = resolve_image_source(niche)
-        _is_generated = _image_source in GENERATED_SOURCES
+        _is_generated = (not _procedural) and _image_source in GENERATED_SOURCES
 
-        # ── Step 1.5: Refine image prompts (optional) ────────────────────────
-        if cfg.prompt_refiner.get("enabled", False):
-            log.info("[1.5/5] Refining image prompts...")
-            from pipeline.prompt_refiner import refine_image_prompts
-            _refine_target = "generation" if _is_generated else "search"
-            script["scenes"] = refine_image_prompts(
-                script["scenes"], niche, target=_refine_target, cfg=cfg,
+        if _procedural:
+            # The renderer draws every frame. No image stage at all.
+            log.info("[2/5] Procedural visuals (renderer=%s) — skipping image stage.",
+                     niche.get("renderer", "ffmpeg"))
+            scene_image_paths = []
+        else:
+            # ── Step 1.5: Refine image prompts (optional) ────────────────────
+            if cfg.prompt_refiner.get("enabled", False):
+                log.info("[1.5/5] Refining image prompts...")
+                from pipeline.prompt_refiner import refine_image_prompts
+                _refine_target = "generation" if _is_generated else "search"
+                script["scenes"] = refine_image_prompts(
+                    script["scenes"], niche, target=_refine_target, cfg=cfg,
+                )
+
+            # ── Step 2: Fetch images ─────────────────────────────────────────
+            log.info("[2/5] Fetching scene images (source=%s)...", _image_source)
+            scene_image_paths = _fetch_scene_images(
+                script=script, niche=niche, conn=conn, cfg=cfg,
+                video_id=video_id, run_slug=run_slug,
+                image_source=_image_source, is_generated=_is_generated,
             )
-
-        # ── Step 2: Fetch images ─────────────────────────────────────────────
-        log.info("[2/5] Fetching scene images (source=%s)...", _image_source)
-        from pipeline.image_library import get_library_image, LibraryEmptyError
-        from pipeline.deity_map import find_best_image_for_scene
-        from pipeline.pexels_library import get_pexels_image, PexelsError
-        from pipeline.image_gen import generate_image, ImageGenError
-        from pipeline.image_policy import LocalGenerationBlocked
-
-        images_dir = str(Path(cfg.paths["images"]) / run_slug)
-        scene_image_paths: list[str] = []
-        _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
-        _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
-
-        for i, scene in enumerate(script["scenes"]):
-            log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
-            try:
-                if _is_generated:
-                    img_path = generate_image(
-                        image_prompt=scene["image_prompt"],
-                        niche=niche,
-                        output_dir=images_dir,
-                        scene_index=i,
-                        cfg=cfg,
-                        local_only=(_image_source == "comfyui"),
-                    )
-                elif _image_source == "pexels":
-                    fallback_q = cfg.pexels_library.get("fallback_query", "abstract cinematic background")
-                    img_path = get_pexels_image(
-                        image_prompt=scene["image_prompt"],
-                        niche=niche,
-                        output_dir=images_dir,
-                        scene_index=i,
-                        fallback_query=fallback_q,
-                        used_photo_ids=_used_pexels_ids,
-                    )
-                else:
-                    img_row = find_best_image_for_scene(
-                        scene["image_prompt"], niche, conn, cfg,
-                        exclude_ids=_used_library_ids,
-                    )
-                    img_path = get_library_image(
-                        image_prompt=scene["image_prompt"],
-                        niche=niche,
-                        conn=conn,
-                        output_dir=images_dir,
-                        scene_index=i,
-                        video_id=video_id,
-                        cfg=cfg,
-                        preselected_row=img_row if img_row else None,
-                        used_image_ids=_used_library_ids,
-                    )
-            except LibraryEmptyError as e:
-                log.error("Image library empty for scene %d: %s", i, e)
-                log.error("Run: python ingest_library.py --folder <path_to_images>")
+            if scene_image_paths is None:
                 conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
                 conn.commit()
                 return
-            except PexelsError as e:
-                log.error("Pexels image fetch failed for scene %d: %s", i, e)
-                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
-                conn.commit()
-                return
-            except LocalGenerationBlocked as e:
-                log.error("Image generation blocked by niche policy for scene %d: %s", i, e)
-                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
-                conn.commit()
-                return
-            except ImageGenError as e:
-                log.error("Image generation failed for scene %d: %s", i, e)
-                log.error("Configure providers in image_keys.json (see image_keys.example.json) "
-                          "or start ComfyUI for the local fallback.")
-                conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
-                conn.commit()
-                return
-            scene_image_paths.append(img_path)
-            log.info("  Scene %d → %s", i + 1, img_path)
 
+        # Status write stays outside the branch — queries elsewhere filter on the
+        # full queued → bg_ready → voice_ready → assembled → sent lifecycle.
         conn.execute("UPDATE videos SET status='bg_ready' WHERE id=?", (video_id,))
         conn.commit()
 
         # ── Step 3: TTS ───────────────────────────────────────────────────────
         log.info("[3/5] Synthesizing narration...")
-        from pipeline.tts import synthesize
+        from pipeline.tts import synthesize, synthesize_scenes
 
-        full_narration = "  ".join(s["narration"] for s in script["scenes"])
         audio_dir = str(Path(cfg.paths["audio"]) / run_slug)
-        audio_path, audio_dur = synthesize(full_narration, audio_dir, video_id, cfg=cfg, niche=niche)
+
+        # Schema-driven: the scary templates carry a per-beat delivery, so those
+        # scenes are synthesized one at a time. Everything else keeps the
+        # single-pass path it has always used.
+        if script.get("script_schema") == "cinematic_scary":
+            audio_path, audio_dur, exact_durations = synthesize_scenes(
+                script["scenes"], audio_dir, video_id, cfg=cfg, niche=niche,
+            )
+        else:
+            full_narration = "  ".join(s["narration"] for s in script["scenes"])
+            audio_path, audio_dur = synthesize(
+                full_narration, audio_dir, video_id, cfg=cfg, niche=niche,
+            )
+            exact_durations = []
         log.info("TTS done: %s (%.2fs)", audio_path, audio_dur)
 
         word_timings_path = str(Path(audio_dir) / "word_timings.json")
 
-        from pipeline.scene_timing import compute_scene_durations
-        scene_durations = compute_scene_durations(script["scenes"], word_timings_path, audio_dur)
+        if exact_durations:
+            # Measured per beat, so there is nothing to infer.
+            scene_durations = exact_durations
+        else:
+            from pipeline.scene_timing import compute_scene_durations
+            scene_durations = compute_scene_durations(
+                script["scenes"], word_timings_path, audio_dur,
+            )
         log.info("Scene durations: %s", [f"{d:.2f}s" for d in scene_durations])
 
         conn.execute(
@@ -314,11 +421,14 @@ def main() -> None:
         conn.commit()
 
         # ── Step 4: Assemble video ────────────────────────────────────────────
-        log.info("[4/5] Assembling video...")
-        from pipeline.ffmpeg_assembler import assemble_from_images
+        log.info("[4/5] Assembling video (renderer=%s)...", niche.get("renderer", "ffmpeg"))
+        from pipeline.renderer_dispatch import get_assembler
 
+        assemble = get_assembler(
+            niche, cfg, title=script["story_title"], seed=video_id,
+        )
         output_path = str(Path(cfg.paths["video"]) / f"{run_slug}.mp4")
-        assemble_from_images(
+        assemble(
             scene_images=scene_image_paths,
             audio_path=audio_path,
             output_path=output_path,
@@ -401,6 +511,16 @@ def main() -> None:
         conn.commit()
         sys.exit(1)
     finally:
+        # Runs on success and on failure — a run that burned quota then died is
+        # exactly when you want to see the numbers. Never let reporting mask the
+        # real exception.
+        try:
+            from pipeline.quota_tracker import format_quota_report
+            report = format_quota_report(conn)
+            if report:
+                log.info("\n%s", report)
+        except Exception as e:
+            log.warning("Quota report failed (non-fatal): %s", e)
         conn.close()
 
 

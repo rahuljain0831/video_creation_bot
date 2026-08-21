@@ -7,10 +7,21 @@ Image generation policy — two hard rules, enforced in code, not in prompts.
    Controlled per-niche by `allow_local_generation` in settings.json
    (default true; mythology sets it to false).
 
-2. Generated images never contain human figures.
-   Distorted hands and faces are the biggest quality problem in local output, so
-   people are kept out of frame entirely: human-referring chunks are stripped
-   from the positive prompt and pushed into the negative prompt.
+2. Generated images never show a clear face or a clear hand.
+
+   The original rule banned people outright, which was aimed at the wrong
+   target. Distorted *faces and hands* are what betray a generated image; a
+   figure seen from behind, a silhouette in a doorway, someone half-swallowed by
+   shadow — those carry the shot and never trip the anatomy problem. Banning
+   them cost every scary story its most useful subject.
+
+   So the policy is graded per niche, via `human_policy`:
+
+       "never"     no people at all (the old behaviour, still the default)
+       "obscured"  figures welcome, faces and hands never legible
+       "none"      no restriction
+
+   `no_humans: true` still means "never", so existing niches are unaffected.
 """
 
 import logging
@@ -24,12 +35,49 @@ GENERATED_SOURCES = ("generate", "comfyui")
 # Sources that run the model on this machine.
 LOCAL_SOURCES = ("comfyui",)
 
+# Sources where there is no image file at all — the renderer draws every frame.
+PROCEDURAL_SOURCES = ("procedural",)
+
+HUMAN_POLICIES = ("never", "obscured", "none")
+
 NO_HUMAN_POSITIVE_SUFFIX = "no people, no humans, unpopulated empty scene"
 
 NO_HUMAN_NEGATIVE_TERMS = (
     "person, people, human, man, woman, child, boy, girl, face, portrait, "
     "hands, fingers, arms, legs, body, crowd, human figure, silhouette of a person"
 )
+
+# "obscured": the figure stays, the anatomy that breaks does not. Every phrase
+# here describes a way of showing a person that a diffusion model renders
+# reliably — turned away, backlit, cropped, distant.
+OBSCURED_POSITIVE_SUFFIX = (
+    "seen from behind, face not visible, hands out of frame, half in shadow"
+)
+
+# The same rule for providers with no negative channel, where every word is
+# taken out of the subject's budget. Long-form constraints are how a 55-word
+# prompt becomes a 111-word one and stops rendering the subject at all.
+FLUX_CONSTRAINTS = {
+    "never":    "no people",
+    "obscured": "no face, no hands",
+    "none":     "",
+}
+
+OBSCURED_NEGATIVE_TERMS = (
+    "face, facial features, eyes, mouth, teeth, portrait, close-up of a face, "
+    "looking at camera, hands, fingers, visible fingers, deformed hands, "
+    "extra fingers, mangled hands, distorted face, disfigured face"
+)
+
+# Chunks naming a face or a hand are dropped even under "obscured" — asking for
+# the thing and forbidding it in the same breath just produces the distortion.
+_ANATOMY_WORDS = (
+    "face", "faces", "facial", "portrait", "eyes", "eye", "mouth", "teeth",
+    "smile", "smiling", "expression", "hand", "hands", "finger", "fingers",
+    "palm", "palms", "fist", "knuckle", "knuckles",
+)
+
+_ANATOMY_RE = re.compile(r"\b(" + "|".join(_ANATOMY_WORDS) + r")\b", re.IGNORECASE)
 
 # Words that mean a human is (or may be) in frame.
 _HUMAN_WORDS = (
@@ -65,6 +113,14 @@ def assert_local_generation_allowed(niche: dict) -> None:
             f"Niche {niche.get('id', '?')!r} has allow_local_generation=false — "
             "local image generation is not permitted for it (use library/pexels)."
         )
+
+
+def is_procedural(niche: dict) -> bool:
+    """
+    True when the niche has no image stage at all — the video renderer draws
+    every frame itself (Remotion typography/atmosphere).
+    """
+    return niche.get("image_source", "library") in PROCEDURAL_SOURCES
 
 
 def resolve_image_source(niche: dict) -> str:
@@ -107,8 +163,64 @@ def sanitize_no_humans(positive_prompt: str) -> str:
     return ", ".join(kept)
 
 
-def apply_no_human_policy(positive: str, negative: str) -> tuple[str, str]:
-    """Return (positive, negative) with the no-human rule applied to both."""
-    positive = sanitize_no_humans(positive)
-    negative = f"{negative}, {NO_HUMAN_NEGATIVE_TERMS}" if negative else NO_HUMAN_NEGATIVE_TERMS
+def sanitize_obscured(positive_prompt: str) -> str:
+    """
+    Keep the people, drop the anatomy.
+
+    Only chunks naming a face or a hand are removed; "a figure standing at the
+    end of the corridor" survives untouched, which is the whole point.
+    """
+    chunks = [c.strip() for c in positive_prompt.split(",")]
+    kept = [c for c in chunks if c and not _ANATOMY_RE.search(c)]
+    dropped = len(chunks) - len(kept)
+
+    if dropped:
+        log.info("obscured-human policy: dropped %d/%d face/hand chunk(s)",
+                 dropped, len(chunks))
+
+    if not kept:
+        kept = [_FALLBACK_SUBJECT]
+
+    kept.append(OBSCURED_POSITIVE_SUFFIX)
+    return ", ".join(kept)
+
+
+def resolve_human_policy(niche: dict, config: dict | None = None) -> str:
+    """
+    Which human policy applies to this niche.
+
+    `human_policy` wins when set. Otherwise the legacy `no_humans` boolean is
+    honoured — niche first, then the global image_gen config — so nothing that
+    predates the graded policy changes behaviour.
+    """
+    policy = str(niche.get("human_policy", "")).strip().lower()
+    if policy in HUMAN_POLICIES:
+        return policy
+    if policy:
+        log.warning("Unknown human_policy %r — falling back to 'never'", policy)
+
+    no_humans = niche.get("no_humans")
+    if no_humans is None:
+        no_humans = (config or {}).get("no_humans", True)
+    return "never" if no_humans else "none"
+
+
+def apply_human_policy(positive: str, negative: str, policy: str) -> tuple[str, str]:
+    """Return (positive, negative) with the niche's human policy applied."""
+    if policy == "none":
+        return positive, negative
+
+    if policy == "obscured":
+        positive = sanitize_obscured(positive)
+        terms = OBSCURED_NEGATIVE_TERMS
+    else:
+        positive = sanitize_no_humans(positive)
+        terms = NO_HUMAN_NEGATIVE_TERMS
+
+    negative = f"{negative}, {terms}" if negative else terms
     return positive, negative
+
+
+def apply_no_human_policy(positive: str, negative: str) -> tuple[str, str]:
+    """Deprecated: the 'never' policy. Kept so older callers keep working."""
+    return apply_human_policy(positive, negative, "never")

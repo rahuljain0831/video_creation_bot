@@ -1,11 +1,12 @@
 {
+  "_comment": "Provider order here does NOT set routing priority — llm_keys.json does. Every provider that appears in llm_keys.json must appear here too, or check_and_log_quota() silently skips it and its usage is never counted. daily_limit values are best-effort free-tier estimates; tune them against your actual plan.",
   "providers": {
-    "groq": {
-      "daily_limit": 14400,
+    "gemini": {
+      "daily_limit": 1500,
       "reset_interval": "daily",
       "reset_time_utc": "00:00",
       "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
-      "notes": "Free tier for LLM inference."
+      "notes": "Google AI Studio free tier. Estimate — varies per model."
     },
     "cerebras": {
       "daily_limit": 20000,
@@ -13,6 +14,55 @@
       "reset_time_utc": "00:00",
       "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
       "notes": "Free tier for LLM inference."
+    },
+    "xai": {
+      "daily_limit": 500,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Credit-based, not a hard daily cap. Estimate."
+    },
+    "perplexity": {
+      "daily_limit": 500,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Credit-based, not a hard daily cap. Estimate."
+    },
+    "nvidia_nim": {
+      "daily_limit": 1000,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "NVIDIA NIM free credits. Estimate."
+    },
+    "groq": {
+      "daily_limit": 14400,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free tier for LLM inference. No key configured currently."
+    },
+    "openrouter": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-model tier. No key configured currently."
+    },
+    "together_ai": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "No key configured currently."
+    },
+    "sambanova": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "No key configured currently."
     }
   },
   "quota_tracking_strategy": {
@@ -34,9 +84,13 @@
     }
   },
   "fallback_chains": {
+    "_comment": "Informational only. The real order is read from llm_keys.json top-to-bottom.",
     "llm": [
-      "groq",
-      "cerebras"
+      "gemini",
+      "cerebras",
+      "xai",
+      "perplexity",
+      "nvidia_nim"
     ]
   }
 }

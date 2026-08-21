@@ -16,6 +16,7 @@ Standalone test:
 import json
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -32,25 +33,38 @@ log = logging.getLogger(__name__)
 _ROOT = Path(__file__).parent
 _KEYS_FILE = _ROOT / "llm_keys.json"
 
-# Maps provider name -> litellm env var name
+# Fallback env vars per provider, used when llm_keys.json has no key for it.
+# Several names per provider on purpose: .env in the wild uses NVIDIA_API_KEY while
+# litellm wants NVIDIA_NIM_API_KEY, which silently skipped a provider that was in
+# fact configured. First non-empty wins. Same contract as image_gen._PROVIDER_ENV_MAP.
 _PROVIDER_ENV_MAP = {
-    "groq":       "GROQ_API_KEY",
-    "cerebras":   "CEREBRAS_API_KEY",
-    "gemini":     "GOOGLE_AI_STUDIO_API_KEY",
-    "xai":        "XAI_API_KEY",
-    "perplexity": "PERPLEXITYAI_API_KEY",
-    "nvidia_nim": "NVIDIA_NIM_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "together_ai": "TOGETHERAI_API_KEY",
-    "sambanova":  "SAMBANOVA_API_KEY",
-    "ollama":     None,
+    "groq":        ("GROQ_API_KEY",),
+    "cerebras":    ("CEREBRAS_API_KEY",),
+    "gemini":      ("GOOGLE_AI_STUDIO_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "xai":         ("XAI_API_KEY",),
+    "perplexity":  ("PERPLEXITYAI_API_KEY", "PERPLEXITY_API_KEY"),
+    "nvidia_nim":  ("NVIDIA_NIM_API_KEY", "NVIDIA_API_KEY"),
+    "openrouter":  ("OPENROUTER_API_KEY",),
+    "together_ai": ("TOGETHERAI_API_KEY", "TOGETHER_API_KEY"),
+    "sambanova":   ("SAMBANOVA_API_KEY",),
+    "ollama":      (),
 }
+
+
+def _key_from_env(provider: str) -> str:
+    """First non-empty env var for this provider, or "" if none are set."""
+    for env_var in _PROVIDER_ENV_MAP.get(provider, ()):
+        key = os.getenv(env_var, "").strip()
+        if key:
+            return key
+    return ""
 
 
 def _load_models_from_keys_file() -> list[tuple[str, str]]:
     """
     Read llm_keys.json, return [(model_string, api_key), ...] in priority order.
-    Skips providers with empty/missing api_key.
+    An empty api_key falls back to that provider's env vars (_PROVIDER_ENV_MAP)
+    before the provider is skipped.
     """
     if not _KEYS_FILE.exists():
         return []
@@ -69,6 +83,8 @@ def _load_models_from_keys_file() -> list[tuple[str, str]]:
         if not isinstance(config, dict):
             continue
         api_key = config.get("api_key", "").strip()
+        if not api_key:
+            api_key = _key_from_env(provider)
         if not api_key:
             continue
         models = config.get("models", [])
@@ -102,6 +118,23 @@ def _get_model_list(cfg_router: dict | None) -> list[tuple[str, str]]:
     if not models:
         models = _load_models_from_env()
     return models
+
+
+def _extract_text(response, model: str) -> str:
+    """
+    Pull the assistant text out of a completion, or raise so the caller falls
+    through to the next provider.
+
+    Reasoning models put their chain-of-thought in `reasoning_content` and leave
+    `content` null when the answer budget runs out. Callers here want plain text
+    (script_gen wants JSON), so a null content is a failed provider, not a
+    result — without this it surfaced as "'NoneType' has no attribute 'strip'",
+    which reads like a router bug rather than a model that answered wrong.
+    """
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise ValueError(f"{model} returned no content (reasoning-only response?)")
+    return content.strip()
 
 
 def _inject_env_for_model(model: str, api_key: str) -> None:
@@ -147,6 +180,75 @@ def _ollama_is_running(base_url: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+
+_OLLAMA_MODEL_CACHE: dict[str, str] = {}
+
+
+def _param_size(details: dict) -> float:
+    """'8.0B' / '2.7B' / '270M' → billions of parameters, for ranking."""
+    raw = str(details.get("parameter_size", "")).strip().upper()
+    match = re.match(r"([\d.]+)\s*([BM])", raw)
+    if not match:
+        return 0.0
+    value = float(match.group(1))
+    return value if match.group(2) == "B" else value / 1000.0
+
+
+def _resolve_ollama_model(ollama_cfg: dict, base_url: str) -> str:
+    """
+    Pick the local model to use for generation.
+
+    `model` set to anything other than "auto" is honoured verbatim — that is the
+    pin escape hatch. On "auto" we ask the daemon what is installed, drop the
+    models that are useless for prose (embedding, code, vision, safety), then
+    rank by the `prefer` list and finally by parameter count.
+    """
+    pinned = str(ollama_cfg.get("model", "auto")).strip()
+    fallback = ollama_cfg.get("fallback_model", "llama3.1:8b")
+
+    if pinned and pinned.lower() != "auto":
+        return pinned
+
+    if base_url in _OLLAMA_MODEL_CACHE:
+        return _OLLAMA_MODEL_CACHE[base_url]
+
+    excludes = ollama_cfg.get(
+        "exclude_patterns",
+        ["embed", "coder", "code", "vision", "guard", "moderat", "rerank"],
+    )
+    prefer = ollama_cfg.get("prefer", ["llama3.1", "qwen2.5", "mistral", "gemma"])
+
+    try:
+        resp = requests.get(f"{base_url}/api/tags", timeout=5)
+        resp.raise_for_status()
+        models = resp.json().get("models", [])
+    except Exception as e:
+        log.warning("Ollama model auto-detect failed (%s) — using %s", e, fallback)
+        return fallback
+
+    candidates = [
+        m for m in models
+        if not any(pat in str(m.get("name", "")).lower() for pat in excludes)
+    ]
+    if not candidates:
+        log.warning("No usable Ollama models installed — using %s", fallback)
+        return fallback
+
+    def rank(m: dict) -> tuple[int, float]:
+        name = str(m.get("name", "")).lower()
+        pref_idx = next(
+            (i for i, p in enumerate(prefer) if p.lower() in name), len(prefer)
+        )
+        return (pref_idx, -_param_size(m.get("details", {})))
+
+    best = str(min(candidates, key=rank)["name"])
+    _OLLAMA_MODEL_CACHE[base_url] = best
+    log.info(
+        "Ollama auto-detect: %d installed, %d usable → %s",
+        len(models), len(candidates), best,
+    )
+    return best
 
 
 def _start_ollama(base_url: str, timeout: int = 30) -> subprocess.Popen | None:
@@ -284,7 +386,7 @@ def call_llm(
                 temperature=temperature,
                 timeout=timeout,
             )
-            text = response.choices[0].message.content.strip()
+            text = _extract_text(response, model)
             log.info("LLM success: model=%s chars=%d", model, len(text))
             success = True
 
@@ -309,18 +411,18 @@ def call_llm(
     ollama_cfg = _get_ollama_config()
     auto_start = ollama_cfg.get("auto_start", True)
     base_url = ollama_cfg.get("base_url", "http://localhost:11434")
-    ollama_model = ollama_cfg.get("model", "llama3.1:8b")
     startup_timeout = ollama_cfg.get("startup_timeout_seconds", 30)
-    model_string = f"ollama/{ollama_model}"
 
     if auto_start:
-        log.info("All cloud providers failed. Trying Ollama (%s)...", model_string)
+        log.info("All cloud providers failed. Trying Ollama...")
         proc = _start_ollama(base_url, timeout=startup_timeout)
 
         # proc=None means either already running or failed to start
         already_running = proc is None and _ollama_is_running(base_url)
 
         if proc is not None or already_running:
+            # Resolve only once the daemon answers — auto-detect queries /api/tags.
+            model_string = f"ollama/{_resolve_ollama_model(ollama_cfg, base_url)}"
             try:
                 log.info("LLM call: model=%s", model_string)
                 response = litellm.completion(
@@ -330,7 +432,7 @@ def call_llm(
                     timeout=timeout,
                     api_base=base_url,
                 )
-                text = response.choices[0].message.content.strip()
+                text = _extract_text(response, model_string)
                 log.info("LLM success: model=%s chars=%d", model_string, len(text))
                 return text, model_string
             except Exception as e:

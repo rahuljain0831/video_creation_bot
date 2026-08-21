@@ -1,0 +1,57 @@
+{
+  "scary_stories/detail": {
+    "face_visible": {
+      "correction": "face turned fully away from camera, features not visible",
+      "hits": 1,
+      "last_seen": "2026-08-21"
+    },
+    "subject_missed": {
+      "correction": "the named subject must be the single clear focus of the frame",
+      "hits": 2,
+      "last_seen": "2026-08-21"
+    }
+  },
+  "scary_stories/object": {
+    "subject_missed": {
+      "correction": "the named subject must be the single clear focus of the frame",
+      "hits": 2,
+      "last_seen": "2026-08-21"
+    }
+  },
+  "scary_stories/pov": {
+    "subject_missed": {
+      "correction": "the named subject must be the single clear focus of the frame",
+      "hits": 3,
+      "last_seen": "2026-08-21"
+    }
+  },
+  "scary_stories/threshold": {
+    "face_visible": {
+      "correction": "face turned fully away from camera, features not visible",
+      "hits": 1,
+      "last_seen": "2026-08-21"
+    },
+    "hands_visible": {
+      "correction": "hands hidden or out of frame",
+      "hits": 1,
+      "last_seen": "2026-08-21"
+    },
+    "subject_missed": {
+      "correction": "the named subject must be the single clear focus of the frame",
+      "hits": 2,
+      "last_seen": "2026-08-21"
+    }
+  },
+  "scary_stories/wide": {
+    "subject_missed": {
+      "correction": "the named subject must be the single clear focus of the frame",
+      "hits": 1,
+      "last_seen": "2026-08-21"
+    },
+    "too_dark": {
+      "correction": "one clearly lit area, visible detail in the shadows",
+      "hits": 1,
+      "last_seen": "2026-08-21"
+    }
+  }
+}

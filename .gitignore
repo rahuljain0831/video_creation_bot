@@ -16,6 +16,8 @@ logs/
 # Temp
 .tmp/
 *.tmp
+# Scratch frames and audio probes from render/voice iteration
+.scratch_img/
 
 # Python
 __pycache__/

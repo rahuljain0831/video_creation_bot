@@ -12,6 +12,7 @@ Provides:
 import logging
 import os
 import random
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -40,16 +41,26 @@ def _ist_to_utc_hour(ist_time_str: str) -> int:
     return ist_dt.hour % 24
 
 
-def _slot_available(candidate: datetime, min_gap_minutes: int, conn) -> bool:
-    """Return True if no pending upload is within ±min_gap_minutes of candidate."""
+def _slot_available(candidate: datetime, min_gap_minutes: int, conn, platform=None) -> bool:
+    """
+    Return True if no pending upload is within ±min_gap_minutes of candidate.
+
+    platform=None keeps the original global check (any platform occupies the slot).
+    Passing a platform scopes the check to that platform, which is what a batch
+    schedule needs — otherwise 3 platforms × N videos starve each other out.
+    """
     delta = timedelta(minutes=min_gap_minutes)
     low = (candidate - delta).strftime("%Y-%m-%d %H:%M:%S")
     high = (candidate + delta).strftime("%Y-%m-%d %H:%M:%S")
-    row = conn.execute(
-        "SELECT COUNT(*) FROM upload_schedule WHERE status='pending' "
-        "AND scheduled_at BETWEEN ? AND ?",
-        (low, high),
-    ).fetchone()
+
+    sql = ("SELECT COUNT(*) FROM upload_schedule WHERE status='pending' "
+           "AND scheduled_at BETWEEN ? AND ?")
+    params = [low, high]
+    if platform is not None:
+        sql += " AND platform=?"
+        params.append(platform)
+
+    row = conn.execute(sql, params).fetchone()
     return row[0] == 0
 
 
@@ -85,7 +96,14 @@ def get_next_platform(niche_id: str, conn) -> str:
     return next_platform
 
 
-def pick_optimal_time(niche_id: str, platform: str, conn) -> datetime:
+def pick_optimal_time(
+    niche_id: str,
+    platform: str,
+    conn,
+    *,
+    on_date=None,
+    earliest: datetime | None = None,
+):
     """
     Choose the best UTC datetime for the next upload.
 
@@ -96,6 +114,15 @@ def pick_optimal_time(niche_id: str, platform: str, conn) -> datetime:
     4. For the winning hour, find the next available slot (today or tomorrow).
        Respects min_gap_minutes via _slot_available().
     5. Hard fallback: default hour tomorrow at :00.
+
+    Batch mode (on_date given, a datetime.date in UTC):
+        Every candidate is built on that exact date instead of rolling to
+        tomorrow, exploration is skipped (a random 6-22 UTC hour would scatter
+        across days), and the slot check is scoped to this platform. Returns
+        None when nothing on that date qualifies, so the caller can apply its
+        own fallback rather than silently landing on another day.
+
+    earliest: reject any candidate before this aware-UTC datetime.
     """
     cfg = _get_scheduler_config()
     exploration_rate: float = cfg.get("exploration_rate", 0.2)
@@ -108,14 +135,31 @@ def pick_optimal_time(niche_id: str, platform: str, conn) -> datetime:
     default_utc_hours = [_ist_to_utc_hour(t) for t in ist_slots]
 
     now_utc = datetime.now(timezone.utc)
+    batch_mode = on_date is not None
+    # In batch mode the slot check is per-platform; the legacy path stays global.
+    slot_platform = platform if batch_mode else None
 
-    # --- Exploration ---
-    if random.random() < exploration_rate:
+    def _build(hour: int) -> datetime | None:
+        """Materialise a candidate for `hour`, or None if it cannot be used."""
+        if batch_mode:
+            candidate = datetime(
+                on_date.year, on_date.month, on_date.day, hour, tzinfo=timezone.utc
+            )
+            if candidate <= now_utc:
+                return None            # that hour is already gone on that date
+        else:
+            candidate = now_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if candidate <= now_utc:
+                candidate += timedelta(days=1)
+        if earliest is not None and candidate < earliest:
+            return None
+        return candidate
+
+    # --- Exploration (never in batch mode — it would jump days) ---
+    if not batch_mode and random.random() < exploration_rate:
         hour = random.randint(6, 22)
-        candidate = now_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
-        if candidate <= now_utc:
-            candidate += timedelta(days=1)
-        if _slot_available(candidate, min_gap, conn):
+        candidate = _build(hour)
+        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform):
             return candidate
         # If slot taken during exploration, fall through to defaults
 
@@ -134,11 +178,12 @@ def pick_optimal_time(niche_id: str, platform: str, conn) -> datetime:
 
     # Find first available slot
     for hour in candidate_hours:
-        candidate = now_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
-        if candidate <= now_utc:
-            candidate += timedelta(days=1)
-        if _slot_available(candidate, min_gap, conn):
+        candidate = _build(hour)
+        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform):
             return candidate
+
+    if batch_mode:
+        return None
 
     # Hard fallback: first default hour, tomorrow
     fallback_hour = default_utc_hours[0] if default_utc_hours else 12
@@ -181,11 +226,15 @@ def create_upload_job(
             "schedule": schedule,
             "requestMethod": 1,  # POST
             "extendedData": {
-                "headers": [
-                    {"name": "Authorization", "value": f"Bearer {github_token}"},
-                    {"name": "Accept", "value": "application/vnd.github.v3+json"},
-                    {"name": "Content-Type", "value": "application/json"},
-                ],
+                # A map, not a list of {name, value} pairs. The list form is
+                # accepted by the request parser and then rejected deeper in,
+                # so every call came back 500 with an empty body — which read
+                # like an outage rather than a malformed payload.
+                "headers": {
+                    "Authorization": f"Bearer {github_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "Content-Type": "application/json",
+                },
                 "body": (
                     '{"event_type":"scheduled-upload",'
                     f'"client_payload":{{"schedule_id":{schedule_id}}}}}'
@@ -194,12 +243,26 @@ def create_upload_job(
         }
     }
 
-    resp = requests.put(
-        "https://api.cron-job.org/jobs",
-        json=body,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        timeout=15,
-    )
+    # Scheduling a batch means dozens of these back to back, and the API starts
+    # answering 429 partway through. Retry the transient codes rather than
+    # dropping the trigger for that upload.
+    resp = None
+    for attempt in range(1, 5):
+        resp = requests.put(
+            "https://api.cron-job.org/jobs",
+            json=body,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            timeout=15,
+        )
+        if resp.ok or resp.status_code not in (429, 500, 502, 503, 504):
+            break
+        if attempt < 4:
+            pause = 5 * attempt
+            logger.warning(
+                "cron-job.org %d for schedule_id=%d — retrying in %ds",
+                resp.status_code, schedule_id, pause,
+            )
+            time.sleep(pause)
 
     if not resp.ok:
         raise RuntimeError(
