@@ -73,9 +73,12 @@ def _build_service():
             flow = InstalledAppFlow.from_client_secrets_file(oauth_creds, _SCOPES)
             creds = flow.run_local_server(port=0)
 
-        # Save token for reuse
+        # Save token for reuse, with issued timestamp for expiry tracking
+        import json as _json
+        token_data = _json.loads(creds.to_json())
+        token_data["_issued_at"] = datetime.now(timezone.utc).isoformat()
         with open(_TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
+            _json.dump(token_data, f, indent=2)
         log.info("Drive OAuth token saved to %s", _TOKEN_PATH)
 
     _service_cache = build("drive", "v3", credentials=creds)
