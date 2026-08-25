@@ -1,0 +1,1215 @@
+{
+  "schemaVersion": 2,
+  "title": "The Sample That Knocks",
+  "audioSrc": null,
+  "narrationVolume": 1.0,
+  "ambienceSrc": null,
+  "ambienceVolume": 0.26,
+  "ambienceGaps": [],
+  "stings": [],
+  "audioDurationInFrames": 1800,
+  "transitionFrames": 12,
+  "seed": 1,
+  "endSubline": "a new story every night",
+  "scenes": [
+    {
+      "template": "hook",
+      "durationInFrames": 75,
+      "narrativeDurationInFrames": 75,
+      "leadInFrames": 0,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 38,
+          "move": "zoomIn"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 37,
+          "move": "punch"
+        }
+      ],
+      "accent": "3:07 AM",
+      "repeat": 1
+    },
+    {
+      "template": "line",
+      "durationInFrames": 192,
+      "narrativeDurationInFrames": 180,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 72,
+          "move": "panLeft"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 60,
+          "move": "driftClose"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 60,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "line",
+      "durationInFrames": 147,
+      "narrativeDurationInFrames": 135,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 74,
+          "move": "zoomOut"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 73,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "impact",
+      "durationInFrames": 162,
+      "narrativeDurationInFrames": 150,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 87,
+          "move": "panRight"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 75,
+          "move": "punch"
+        }
+      ],
+      "accent": "KNOCK.",
+      "repeat": 3
+    },
+    {
+      "template": "line",
+      "durationInFrames": 117,
+      "narrativeDurationInFrames": 105,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 59,
+          "move": "zoomIn"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 58,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "reveal",
+      "durationInFrames": 282,
+      "narrativeDurationInFrames": 270,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 102,
+          "move": "panLeft"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 90,
+          "move": "driftClose"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 90,
+          "move": "punch"
+        }
+      ],
+      "accent": "I opened it.",
+      "repeat": 1
+    },
+    {
+      "template": "line",
+      "durationInFrames": 132,
+      "narrativeDurationInFrames": 120,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 67,
+          "move": "zoomOut"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 65,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "impact",
+      "durationInFrames": 102,
+      "narrativeDurationInFrames": 90,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 57,
+          "move": "panRight"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 45,
+          "move": "punch"
+        }
+      ],
+      "accent": "NOTHING.",
+      "repeat": 3
+    },
+    {
+      "template": "line",
+      "durationInFrames": 177,
+      "narrativeDurationInFrames": 165,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 71,
+          "move": "zoomIn"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 59,
+          "move": "driftClose"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 47,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "scare",
+      "durationInFrames": 222,
+      "narrativeDurationInFrames": 210,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 82,
+          "move": "panLeft"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 70,
+          "move": "driftClose"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 70,
+          "move": "punch"
+        }
+      ],
+      "accent": "FROM INSIDE.",
+      "repeat": 1
+    },
+    {
+      "template": "line",
+      "durationInFrames": 132,
+      "narrativeDurationInFrames": 120,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 63,
+          "move": "zoomOut"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 69,
+          "move": "punch"
+        }
+      ],
+      "accent": "",
+      "repeat": 1
+    },
+    {
+      "template": "end",
+      "durationInFrames": 192,
+      "narrativeDurationInFrames": 180,
+      "leadInFrames": 12,
+      "imageSrc": null,
+      "shots": [
+        {
+          "imageSrc": null,
+          "durationInFrames": 72,
+          "move": "panRight"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 60,
+          "move": "driftClose"
+        },
+        {
+          "imageSrc": null,
+          "durationInFrames": 60,
+          "move": "punch"
+        }
+      ],
+      "accent": "DON'T ANSWER",
+      "repeat": 1
+    }
+  ],
+  "captions": [
+    {
+      "fromFrame": 0,
+      "toFrame": 28,
+      "words": [
+        {
+          "text": "Every",
+          "fromFrame": 0,
+          "toFrame": 9
+        },
+        {
+          "text": "night,",
+          "fromFrame": 9,
+          "toFrame": 19
+        },
+        {
+          "text": "at",
+          "fromFrame": 19,
+          "toFrame": 28
+        }
+      ]
+    },
+    {
+      "fromFrame": 28,
+      "toFrame": 56,
+      "words": [
+        {
+          "text": "exactly",
+          "fromFrame": 28,
+          "toFrame": 38
+        },
+        {
+          "text": "seven",
+          "fromFrame": 38,
+          "toFrame": 47
+        },
+        {
+          "text": "minutes",
+          "fromFrame": 47,
+          "toFrame": 56
+        }
+      ]
+    },
+    {
+      "fromFrame": 56,
+      "toFrame": 87,
+      "words": [
+        {
+          "text": "past",
+          "fromFrame": 56,
+          "toFrame": 66
+        },
+        {
+          "text": "three.",
+          "fromFrame": 66,
+          "toFrame": 75
+        },
+        {
+          "text": "I",
+          "fromFrame": 75,
+          "toFrame": 87
+        }
+      ]
+    },
+    {
+      "fromFrame": 87,
+      "toFrame": 123,
+      "words": [
+        {
+          "text": "live",
+          "fromFrame": 87,
+          "toFrame": 99
+        },
+        {
+          "text": "alone",
+          "fromFrame": 99,
+          "toFrame": 111
+        },
+        {
+          "text": "on",
+          "fromFrame": 111,
+          "toFrame": 123
+        }
+      ]
+    },
+    {
+      "fromFrame": 123,
+      "toFrame": 159,
+      "words": [
+        {
+          "text": "the",
+          "fromFrame": 123,
+          "toFrame": 135
+        },
+        {
+          "text": "fourth",
+          "fromFrame": 135,
+          "toFrame": 147
+        },
+        {
+          "text": "floor.",
+          "fromFrame": 147,
+          "toFrame": 159
+        }
+      ]
+    },
+    {
+      "fromFrame": 159,
+      "toFrame": 195,
+      "words": [
+        {
+          "text": "There",
+          "fromFrame": 159,
+          "toFrame": 171
+        },
+        {
+          "text": "are",
+          "fromFrame": 171,
+          "toFrame": 183
+        },
+        {
+          "text": "no",
+          "fromFrame": 183,
+          "toFrame": 195
+        }
+      ]
+    },
+    {
+      "fromFrame": 195,
+      "toFrame": 231,
+      "words": [
+        {
+          "text": "neighbours",
+          "fromFrame": 195,
+          "toFrame": 207
+        },
+        {
+          "text": "left",
+          "fromFrame": 207,
+          "toFrame": 219
+        },
+        {
+          "text": "on",
+          "fromFrame": 219,
+          "toFrame": 231
+        }
+      ]
+    },
+    {
+      "fromFrame": 231,
+      "toFrame": 265,
+      "words": [
+        {
+          "text": "this",
+          "fromFrame": 231,
+          "toFrame": 243
+        },
+        {
+          "text": "side.",
+          "fromFrame": 243,
+          "toFrame": 255
+        },
+        {
+          "text": "The",
+          "fromFrame": 255,
+          "toFrame": 265
+        }
+      ]
+    },
+    {
+      "fromFrame": 265,
+      "toFrame": 297,
+      "words": [
+        {
+          "text": "building",
+          "fromFrame": 265,
+          "toFrame": 276
+        },
+        {
+          "text": "manager",
+          "fromFrame": 276,
+          "toFrame": 286
+        },
+        {
+          "text": "says",
+          "fromFrame": 286,
+          "toFrame": 297
+        }
+      ]
+    },
+    {
+      "fromFrame": 297,
+      "toFrame": 328,
+      "words": [
+        {
+          "text": "the",
+          "fromFrame": 297,
+          "toFrame": 307
+        },
+        {
+          "text": "flat",
+          "fromFrame": 307,
+          "toFrame": 317
+        },
+        {
+          "text": "next",
+          "fromFrame": 317,
+          "toFrame": 328
+        }
+      ]
+    },
+    {
+      "fromFrame": 328,
+      "toFrame": 359,
+      "words": [
+        {
+          "text": "door",
+          "fromFrame": 328,
+          "toFrame": 338
+        },
+        {
+          "text": "has",
+          "fromFrame": 338,
+          "toFrame": 348
+        },
+        {
+          "text": "been",
+          "fromFrame": 348,
+          "toFrame": 359
+        }
+      ]
+    },
+    {
+      "fromFrame": 359,
+      "toFrame": 390,
+      "words": [
+        {
+          "text": "empty",
+          "fromFrame": 359,
+          "toFrame": 369
+        },
+        {
+          "text": "for",
+          "fromFrame": 369,
+          "toFrame": 380
+        },
+        {
+          "text": "years.",
+          "fromFrame": 380,
+          "toFrame": 390
+        }
+      ]
+    },
+    {
+      "fromFrame": 390,
+      "toFrame": 446,
+      "words": [
+        {
+          "text": "Three",
+          "fromFrame": 390,
+          "toFrame": 409
+        },
+        {
+          "text": "knocks.",
+          "fromFrame": 409,
+          "toFrame": 428
+        },
+        {
+          "text": "Always",
+          "fromFrame": 428,
+          "toFrame": 446
+        }
+      ]
+    },
+    {
+      "fromFrame": 446,
+      "toFrame": 502,
+      "words": [
+        {
+          "text": "three.",
+          "fromFrame": 446,
+          "toFrame": 465
+        },
+        {
+          "text": "Never",
+          "fromFrame": 465,
+          "toFrame": 484
+        },
+        {
+          "text": "four,",
+          "fromFrame": 484,
+          "toFrame": 502
+        }
+      ]
+    },
+    {
+      "fromFrame": 502,
+      "toFrame": 552,
+      "words": [
+        {
+          "text": "never",
+          "fromFrame": 502,
+          "toFrame": 521
+        },
+        {
+          "text": "two.",
+          "fromFrame": 521,
+          "toFrame": 540
+        },
+        {
+          "text": "I",
+          "fromFrame": 540,
+          "toFrame": 552
+        }
+      ]
+    },
+    {
+      "fromFrame": 552,
+      "toFrame": 587,
+      "words": [
+        {
+          "text": "stopped",
+          "fromFrame": 552,
+          "toFrame": 563
+        },
+        {
+          "text": "counting",
+          "fromFrame": 563,
+          "toFrame": 575
+        },
+        {
+          "text": "the",
+          "fromFrame": 575,
+          "toFrame": 587
+        }
+      ]
+    },
+    {
+      "fromFrame": 587,
+      "toFrame": 622,
+      "words": [
+        {
+          "text": "nights",
+          "fromFrame": 587,
+          "toFrame": 598
+        },
+        {
+          "text": "after",
+          "fromFrame": 598,
+          "toFrame": 610
+        },
+        {
+          "text": "the",
+          "fromFrame": 610,
+          "toFrame": 622
+        }
+      ]
+    },
+    {
+      "fromFrame": 622,
+      "toFrame": 660,
+      "words": [
+        {
+          "text": "first",
+          "fromFrame": 622,
+          "toFrame": 633
+        },
+        {
+          "text": "month.",
+          "fromFrame": 633,
+          "toFrame": 645
+        },
+        {
+          "text": "Last",
+          "fromFrame": 645,
+          "toFrame": 660
+        }
+      ]
+    },
+    {
+      "fromFrame": 660,
+      "toFrame": 705,
+      "words": [
+        {
+          "text": "night",
+          "fromFrame": 660,
+          "toFrame": 675
+        },
+        {
+          "text": "I",
+          "fromFrame": 675,
+          "toFrame": 690
+        },
+        {
+          "text": "finally",
+          "fromFrame": 690,
+          "toFrame": 705
+        }
+      ]
+    },
+    {
+      "fromFrame": 705,
+      "toFrame": 750,
+      "words": [
+        {
+          "text": "walked",
+          "fromFrame": 705,
+          "toFrame": 720
+        },
+        {
+          "text": "to",
+          "fromFrame": 720,
+          "toFrame": 735
+        },
+        {
+          "text": "the",
+          "fromFrame": 735,
+          "toFrame": 750
+        }
+      ]
+    },
+    {
+      "fromFrame": 750,
+      "toFrame": 795,
+      "words": [
+        {
+          "text": "door,",
+          "fromFrame": 750,
+          "toFrame": 765
+        },
+        {
+          "text": "put",
+          "fromFrame": 765,
+          "toFrame": 780
+        },
+        {
+          "text": "my",
+          "fromFrame": 780,
+          "toFrame": 795
+        }
+      ]
+    },
+    {
+      "fromFrame": 795,
+      "toFrame": 840,
+      "words": [
+        {
+          "text": "hand",
+          "fromFrame": 795,
+          "toFrame": 810
+        },
+        {
+          "text": "on",
+          "fromFrame": 810,
+          "toFrame": 825
+        },
+        {
+          "text": "the",
+          "fromFrame": 825,
+          "toFrame": 840
+        }
+      ]
+    },
+    {
+      "fromFrame": 840,
+      "toFrame": 885,
+      "words": [
+        {
+          "text": "latch,",
+          "fromFrame": 840,
+          "toFrame": 855
+        },
+        {
+          "text": "and",
+          "fromFrame": 855,
+          "toFrame": 870
+        },
+        {
+          "text": "opened",
+          "fromFrame": 870,
+          "toFrame": 885
+        }
+      ]
+    },
+    {
+      "fromFrame": 885,
+      "toFrame": 924,
+      "words": [
+        {
+          "text": "it",
+          "fromFrame": 885,
+          "toFrame": 900
+        },
+        {
+          "text": "wide.",
+          "fromFrame": 900,
+          "toFrame": 915
+        },
+        {
+          "text": "The",
+          "fromFrame": 915,
+          "toFrame": 924
+        }
+      ]
+    },
+    {
+      "fromFrame": 924,
+      "toFrame": 952,
+      "words": [
+        {
+          "text": "corridor",
+          "fromFrame": 924,
+          "toFrame": 933
+        },
+        {
+          "text": "light",
+          "fromFrame": 933,
+          "toFrame": 943
+        },
+        {
+          "text": "was",
+          "fromFrame": 943,
+          "toFrame": 952
+        }
+      ]
+    },
+    {
+      "fromFrame": 952,
+      "toFrame": 980,
+      "words": [
+        {
+          "text": "still",
+          "fromFrame": 952,
+          "toFrame": 961
+        },
+        {
+          "text": "broken.",
+          "fromFrame": 961,
+          "toFrame": 970
+        },
+        {
+          "text": "The",
+          "fromFrame": 970,
+          "toFrame": 980
+        }
+      ]
+    },
+    {
+      "fromFrame": 980,
+      "toFrame": 1007,
+      "words": [
+        {
+          "text": "air",
+          "fromFrame": 980,
+          "toFrame": 989
+        },
+        {
+          "text": "was",
+          "fromFrame": 989,
+          "toFrame": 998
+        },
+        {
+          "text": "cold",
+          "fromFrame": 998,
+          "toFrame": 1007
+        }
+      ]
+    },
+    {
+      "fromFrame": 1007,
+      "toFrame": 1035,
+      "words": [
+        {
+          "text": "enough",
+          "fromFrame": 1007,
+          "toFrame": 1017
+        },
+        {
+          "text": "to",
+          "fromFrame": 1017,
+          "toFrame": 1026
+        },
+        {
+          "text": "see.",
+          "fromFrame": 1026,
+          "toFrame": 1035
+        }
+      ]
+    },
+    {
+      "fromFrame": 1035,
+      "toFrame": 1102,
+      "words": [
+        {
+          "text": "There",
+          "fromFrame": 1035,
+          "toFrame": 1058
+        },
+        {
+          "text": "was",
+          "fromFrame": 1058,
+          "toFrame": 1080
+        },
+        {
+          "text": "nobody",
+          "fromFrame": 1080,
+          "toFrame": 1102
+        }
+      ]
+    },
+    {
+      "fromFrame": 1102,
+      "toFrame": 1149,
+      "words": [
+        {
+          "text": "there.",
+          "fromFrame": 1102,
+          "toFrame": 1125
+        },
+        {
+          "text": "I",
+          "fromFrame": 1125,
+          "toFrame": 1137
+        },
+        {
+          "text": "stood",
+          "fromFrame": 1137,
+          "toFrame": 1149
+        }
+      ]
+    },
+    {
+      "fromFrame": 1149,
+      "toFrame": 1184,
+      "words": [
+        {
+          "text": "in",
+          "fromFrame": 1149,
+          "toFrame": 1160
+        },
+        {
+          "text": "the",
+          "fromFrame": 1160,
+          "toFrame": 1172
+        },
+        {
+          "text": "doorway",
+          "fromFrame": 1172,
+          "toFrame": 1184
+        }
+      ]
+    },
+    {
+      "fromFrame": 1184,
+      "toFrame": 1219,
+      "words": [
+        {
+          "text": "for",
+          "fromFrame": 1184,
+          "toFrame": 1196
+        },
+        {
+          "text": "a",
+          "fromFrame": 1196,
+          "toFrame": 1208
+        },
+        {
+          "text": "long",
+          "fromFrame": 1208,
+          "toFrame": 1219
+        }
+      ]
+    },
+    {
+      "fromFrame": 1219,
+      "toFrame": 1255,
+      "words": [
+        {
+          "text": "time,",
+          "fromFrame": 1219,
+          "toFrame": 1231
+        },
+        {
+          "text": "listening",
+          "fromFrame": 1231,
+          "toFrame": 1243
+        },
+        {
+          "text": "to",
+          "fromFrame": 1243,
+          "toFrame": 1255
+        }
+      ]
+    },
+    {
+      "fromFrame": 1255,
+      "toFrame": 1290,
+      "words": [
+        {
+          "text": "the",
+          "fromFrame": 1255,
+          "toFrame": 1266
+        },
+        {
+          "text": "building",
+          "fromFrame": 1266,
+          "toFrame": 1278
+        },
+        {
+          "text": "settle.",
+          "fromFrame": 1278,
+          "toFrame": 1290
+        }
+      ]
+    },
+    {
+      "fromFrame": 1290,
+      "toFrame": 1342,
+      "words": [
+        {
+          "text": "Then",
+          "fromFrame": 1290,
+          "toFrame": 1307
+        },
+        {
+          "text": "the",
+          "fromFrame": 1307,
+          "toFrame": 1325
+        },
+        {
+          "text": "knocking",
+          "fromFrame": 1325,
+          "toFrame": 1342
+        }
+      ]
+    },
+    {
+      "fromFrame": 1342,
+      "toFrame": 1395,
+      "words": [
+        {
+          "text": "started",
+          "fromFrame": 1342,
+          "toFrame": 1360
+        },
+        {
+          "text": "again,",
+          "fromFrame": 1360,
+          "toFrame": 1377
+        },
+        {
+          "text": "and",
+          "fromFrame": 1377,
+          "toFrame": 1395
+        }
+      ]
+    },
+    {
+      "fromFrame": 1395,
+      "toFrame": 1448,
+      "words": [
+        {
+          "text": "this",
+          "fromFrame": 1395,
+          "toFrame": 1412
+        },
+        {
+          "text": "time",
+          "fromFrame": 1412,
+          "toFrame": 1430
+        },
+        {
+          "text": "it",
+          "fromFrame": 1430,
+          "toFrame": 1448
+        }
+      ]
+    },
+    {
+      "fromFrame": 1448,
+      "toFrame": 1500,
+      "words": [
+        {
+          "text": "was",
+          "fromFrame": 1448,
+          "toFrame": 1465
+        },
+        {
+          "text": "behind",
+          "fromFrame": 1465,
+          "toFrame": 1482
+        },
+        {
+          "text": "me.",
+          "fromFrame": 1482,
+          "toFrame": 1500
+        }
+      ]
+    },
+    {
+      "fromFrame": 1500,
+      "toFrame": 1551,
+      "words": [
+        {
+          "text": "I",
+          "fromFrame": 1500,
+          "toFrame": 1517
+        },
+        {
+          "text": "have",
+          "fromFrame": 1517,
+          "toFrame": 1534
+        },
+        {
+          "text": "not",
+          "fromFrame": 1534,
+          "toFrame": 1551
+        }
+      ]
+    },
+    {
+      "fromFrame": 1551,
+      "toFrame": 1603,
+      "words": [
+        {
+          "text": "opened",
+          "fromFrame": 1551,
+          "toFrame": 1569
+        },
+        {
+          "text": "that",
+          "fromFrame": 1569,
+          "toFrame": 1586
+        },
+        {
+          "text": "door",
+          "fromFrame": 1586,
+          "toFrame": 1603
+        }
+      ]
+    },
+    {
+      "fromFrame": 1603,
+      "toFrame": 1660,
+      "words": [
+        {
+          "text": "since.",
+          "fromFrame": 1603,
+          "toFrame": 1620
+        },
+        {
+          "text": "If",
+          "fromFrame": 1620,
+          "toFrame": 1640
+        },
+        {
+          "text": "you",
+          "fromFrame": 1640,
+          "toFrame": 1660
+        }
+      ]
+    },
+    {
+      "fromFrame": 1660,
+      "toFrame": 1720,
+      "words": [
+        {
+          "text": "hear",
+          "fromFrame": 1660,
+          "toFrame": 1680
+        },
+        {
+          "text": "three",
+          "fromFrame": 1680,
+          "toFrame": 1700
+        },
+        {
+          "text": "knocks",
+          "fromFrame": 1700,
+          "toFrame": 1720
+        }
+      ]
+    },
+    {
+      "fromFrame": 1720,
+      "toFrame": 1780,
+      "words": [
+        {
+          "text": "tonight,",
+          "fromFrame": 1720,
+          "toFrame": 1740
+        },
+        {
+          "text": "do",
+          "fromFrame": 1740,
+          "toFrame": 1760
+        },
+        {
+          "text": "not",
+          "fromFrame": 1760,
+          "toFrame": 1780
+        }
+      ]
+    },
+    {
+      "fromFrame": 1780,
+      "toFrame": 1797,
+      "words": [
+        {
+          "text": "answer.",
+          "fromFrame": 1780,
+          "toFrame": 1797
+        }
+      ]
+    }
+  ],
+  "captionStyle": {
+    "fontSizePx": 96,
+    "anchorYPercent": 62.0,
+    "activeColor": "#f4ece0",
+    "idleColor": "#9c948a"
+  }
+}

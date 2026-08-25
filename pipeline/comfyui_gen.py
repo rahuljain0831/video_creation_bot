@@ -217,7 +217,9 @@ def generate_comfyui_image(
     negative = config["negative_prompt"]
 
     # Policy: local output never contains human figures (distorted hands/faces).
-    positive, negative = apply_no_human_policy(positive, negative)
+    # A niche whose subject *is* a human figure (deities) opts out via no_humans: false.
+    if niche.get("no_humans", config.get("no_humans", True)):
+        positive, negative = apply_no_human_policy(positive, negative)
 
     # Per-niche checkpoint override
     checkpoint = niche.get("comfyui_checkpoint", config["default_checkpoint"])

@@ -4,7 +4,10 @@
     "max_per_day": 10
   },
   "video": {
-    "resolution": [1080, 1920],
+    "resolution": [
+      1080,
+      1920
+    ],
     "fps": 30,
     "caption_style": {
       "fontsize": 14,
@@ -23,14 +26,20 @@
     {
       "id": "mythology",
       "label": "Mythology",
-      "image_source": "library",
-      "allow_local_generation": false,
+      "enabled": false,
+      "image_source": "generate",
+      "allow_local_generation": true,
+      "no_humans": false,
       "tone": "dramatic, awe-inspiring",
       "art_style_prompt_suffix": "epic mythological digital painting, dramatic lighting, rich color, cinematic composition",
       "image_prompt_rules": "Every character has exactly ONE head unless the deity is specifically known for multiple heads (e.g. Brahma=4 heads, Shesha=many heads). For non-humanoid avatars describe correct animal anatomy (Kurma=single-headed giant tortoise, Matsya=fish, Varaha=boar-headed). For deities with multiple arms state the exact count (e.g. 'four arms'). Faces must be serene and clearly rendered. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-ChristopherNeural",
-        "voice_pool_edge": ["en-US-ChristopherNeural", "en-US-AndrewNeural", "en-US-EricNeural"],
+        "voice_pool_edge": [
+          "en-US-ChristopherNeural",
+          "en-US-AndrewNeural",
+          "en-US-EricNeural"
+        ],
         "rate": "-5%",
         "volume": "+5%",
         "pitch": "+0Hz"
@@ -47,7 +56,11 @@
           "art_style_prompt_suffix": "dark Norse saga illustration, runic stone engravings aesthetic, muted steel blues and iron grays, dramatic stormy Nordic skies, Viking age warriors and gods, cinematic composition",
           "tts": {
             "voice_edge": "en-GB-RyanNeural",
-            "voice_pool_edge": ["en-GB-RyanNeural", "en-GB-ThomasNeural", "en-US-GuyNeural"],
+            "voice_pool_edge": [
+              "en-GB-RyanNeural",
+              "en-GB-ThomasNeural",
+              "en-US-GuyNeural"
+            ],
             "rate": "+5%",
             "volume": "+5%",
             "pitch": "-5Hz"
@@ -59,7 +72,11 @@
           "art_style_prompt_suffix": "Egyptian hieroglyphic art style, golden desert haze, papyrus texture backdrop, lapis lazuli and gold palette, pharaonic regalia and animal-headed gods, cinematic composition",
           "tts": {
             "voice_edge": "en-US-EricNeural",
-            "voice_pool_edge": ["en-US-EricNeural", "en-US-AndrewNeural", "en-US-GuyNeural"],
+            "voice_pool_edge": [
+              "en-US-EricNeural",
+              "en-US-AndrewNeural",
+              "en-US-GuyNeural"
+            ],
             "rate": "-5%",
             "volume": "+5%",
             "pitch": "-5Hz"
@@ -71,7 +88,11 @@
           "art_style_prompt_suffix": "ancient Greek vase painting meets epic digital art, marble white and Aegean blue palette, classical sculpture aesthetic, dramatic Olympian lighting, togas and bronze armor, cinematic composition",
           "tts": {
             "voice_edge": "en-US-GuyNeural",
-            "voice_pool_edge": ["en-US-GuyNeural", "en-US-AndrewNeural", "en-US-SteffanNeural"],
+            "voice_pool_edge": [
+              "en-US-GuyNeural",
+              "en-US-AndrewNeural",
+              "en-US-SteffanNeural"
+            ],
             "rate": "+5%",
             "volume": "+5%",
             "pitch": "+0Hz"
@@ -83,16 +104,51 @@
       "id": "scary_stories",
       "label": "Scary Stories",
       "image_source": "generate",
+      "renderer": "remotion",
+      "script_schema": "cinematic_scary",
       "allow_local_generation": true,
       "tone": "suspenseful, unsettling",
-      "art_style_prompt_suffix": "dark moody horror illustration, desaturated palette, heavy shadow, cinematic composition",
-      "image_prompt_rules": "No humans, no human figures, no faces, no hands — images are generated and human anatomy distorts. Use empty interiors, shadows, fog, objects, doorways, and implied threat instead. Specify the main subject or setting prominently in the foreground.",
+      "human_policy": "obscured",
+      "art_style_prompt_suffix": "cinematic horror photograph, photorealistic, real location, natural lighting, desaturated palette, deep shadow with visible detail in it, no illustration",
+      "image_prompt_rules": "Depict LITERALLY what the narration describes — the exact place, the exact objects, and the exact NUMBER of them (five tents means five tents visible), the light source, the weather. If the narration says it was cold outside the door, show that door with mist beyond it. A person may appear, but only turned away, silhouetted, distant or half in shadow — never a visible face and never visible hands, because generated anatomy distorts. One subject per image: never a screen showing another scene, or a reflection of somewhere else.",
+      "min_scenes": 14,
+      "max_scenes": 17,
+      "min_duration_sec": 60,
+      "max_duration_sec": 75,
+      "remotion": {
+        "project_dir": "remotion-scary",
+        "composition_id": "ScaryStory",
+        "crf": 18,
+        "transition_frames": 12,
+        "timeout_sec": 1800,
+        "keep_artifacts": false
+      },
+      "caption_style": {
+        "fontsize": 18,
+        "chunk_size": 3,
+        "anchor_y_percent": 78
+      },
+      "horror_audio": {
+        "enabled": true,
+        "bed": null,
+        "bed_pool": ["dirge", "musicbox"],
+        "ambience_volume": 0.36,
+        "stings": false,
+        "sting_volume": 0.85,
+        "narration_volume": 1.0
+      },
       "tts": {
         "voice_edge": "en-US-GuyNeural",
-        "voice_pool_edge": ["en-US-GuyNeural", "en-US-EricNeural", "en-US-AndrewNeural", "en-US-RogerNeural"],
+        "voice_pool_edge": [
+          "en-US-GuyNeural",
+          "en-US-EricNeural",
+          "en-US-AndrewNeural",
+          "en-US-RogerNeural"
+        ],
         "rate": "-15%",
         "volume": "-5%",
-        "pitch": "-10Hz"
+        "pitch": "-10Hz",
+        "voice_fx": true
       }
     },
     {
@@ -105,7 +161,12 @@
       "image_prompt_rules": "No humans, no human figures, no faces, no hands — images are generated and human anatomy distorts. Focus on vaults, cash, blueprints, tools, vehicles, empty corridors, cityscapes at night. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-RogerNeural",
-        "voice_pool_edge": ["en-US-RogerNeural", "en-US-BrianNeural", "en-US-GuyNeural", "en-US-SteffanNeural"],
+        "voice_pool_edge": [
+          "en-US-RogerNeural",
+          "en-US-BrianNeural",
+          "en-US-GuyNeural",
+          "en-US-SteffanNeural"
+        ],
         "rate": "+10%",
         "volume": "+5%",
         "pitch": "+0Hz"
@@ -121,7 +182,12 @@
       "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on celestial bodies, telescopes, lab equipment, natural phenomena, data visualizations. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-SteffanNeural",
-        "voice_pool_edge": ["en-US-SteffanNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
+        "voice_pool_edge": [
+          "en-US-SteffanNeural",
+          "en-US-BrianNeural",
+          "en-US-ChristopherNeural",
+          "en-US-AndrewNeural"
+        ],
         "rate": "+0%",
         "volume": "+0%",
         "pitch": "+0Hz"
@@ -137,7 +203,11 @@
       "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on screens, UI mockups, devices, abstract tech/data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-BrianNeural",
-        "voice_pool_edge": ["en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-AndrewNeural"],
+        "voice_pool_edge": [
+          "en-US-BrianNeural",
+          "en-US-ChristopherNeural",
+          "en-US-AndrewNeural"
+        ],
         "rate": "+5%",
         "volume": "+0%",
         "pitch": "+0Hz"
@@ -153,7 +223,11 @@
       "image_prompt_rules": "No humans, no human figures, no faces, no hands. Focus on charts, currency, skylines, financial data visuals. Specify the main subject prominently in the foreground.",
       "tts": {
         "voice_edge": "en-US-ChristopherNeural",
-        "voice_pool_edge": ["en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-RogerNeural"],
+        "voice_pool_edge": [
+          "en-US-ChristopherNeural",
+          "en-US-GuyNeural",
+          "en-US-RogerNeural"
+        ],
         "rate": "+5%",
         "volume": "+5%",
         "pitch": "+0Hz"
@@ -169,7 +243,11 @@
     "grounding_required": false
   },
   "tts": {
-    "provider_priority": ["edge_tts", "piper", "kokoro"],
+    "provider_priority": [
+      "edge_tts",
+      "piper",
+      "kokoro"
+    ],
     "voice_piper": "en_US-lessac-medium",
     "voice_edge": "en-US-GuyNeural",
     "rate": "+0%",
@@ -188,16 +266,34 @@
     "base_url": "http://localhost:11434",
     "num_gpu": 0,
     "auto_start": true,
-    "model": "llama3.1:8b",
+    "model": "auto",
+    "prefer": [
+      "llama3.1",
+      "llama3",
+      "qwen2.5",
+      "qwen3",
+      "mistral",
+      "gemma"
+    ],
+    "exclude_patterns": [
+      "embed",
+      "coder",
+      "code",
+      "vision",
+      "guard",
+      "moderat",
+      "rerank"
+    ],
+    "fallback_model": "llama3.1:8b",
     "startup_timeout_seconds": 30
   },
   "paths": {
-    "db":      "output/db/agent.db",
+    "db": "output/db/agent.db",
     "scripts": "output/scripts",
-    "images":  "output/images",
-    "audio":   "output/audio",
-    "video":   "output/video",
-    "logs":    "output/logs"
+    "images": "output/images",
+    "audio": "output/audio",
+    "video": "output/video",
+    "logs": "output/logs"
   },
   "image_library": {
     "vision_model": "gemini-2.0-flash",
@@ -215,12 +311,21 @@
     "enabled": false
   },
   "image_gen": {
-    "width": 720,
-    "height": 1280,
+    "width": 1080,
+    "height": 1920,
     "timeout_seconds": 120,
     "no_humans": true,
     "local_fallback": true,
-    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, ugly, missing limb, long neck, out of frame, watermark, text"
+    "max_attempts": 6,
+    "_human_policy_comment": "Global default. Per-niche 'human_policy' overrides it: never | obscured | none.",
+    "retry_base_sleep": 3.0,
+    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, ugly, missing limb, long neck, out of frame, watermark, text, nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, provocative, topless, bare chest, revealing clothing, bare body, bare shoulders, underwear, lingerie, swimsuit, bikini, suggestive, seductive, sensual, intimate, undressed, shirtless, skimpy, see-through, transparent clothing, low-cut, midriff, lewd, explicit, adult content, risque, indecent",
+    "quality_gate": {
+      "_comment": "Inline vision-model quality check. Rejects images scoring below threshold and retries. Needs Ollama + qwen2.5vl:3b (same as image_critic). Adds ~15s per scene per attempt.",
+      "enabled": false,
+      "threshold": 0.40,
+      "log_scores": true
+    }
   },
   "comfyui": {
     "base_url": "http://127.0.0.1:8188",
@@ -231,18 +336,40 @@
     "width": 512,
     "height": 768,
     "timeout_seconds": 120,
-    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, poorly drawn face, mutation, extra limb, ugly, poorly drawn hands, missing limb, long neck, out of frame"
+    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, poorly drawn face, mutation, extra limb, ugly, poorly drawn hands, missing limb, long neck, out of frame, nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, provocative, topless, bare chest, revealing clothing, bare body, bare shoulders, underwear, lingerie, swimsuit, bikini, suggestive, seductive, sensual, intimate, undressed, shirtless, skimpy, see-through, transparent clothing, low-cut, midriff, lewd, explicit, adult content, risque, indecent"
   },
   "scheduler": {
     "enabled": true,
     "default_times_ist": {
-      "youtube":   ["17:00", "20:00", "12:00"],
-      "instagram": ["19:00", "21:00", "11:00"],
-      "facebook":  ["13:00", "18:00", "21:00"]
+      "youtube": [
+        "17:00",
+        "20:00",
+        "12:00"
+      ],
+      "instagram": [
+        "19:00",
+        "21:00",
+        "11:00"
+      ],
+      "facebook": [
+        "13:00",
+        "18:00",
+        "21:00"
+      ]
     },
     "min_gap_minutes": 30,
     "exploration_rate": 0.2,
     "trusted_sample_min": 3,
     "github_repo": "rahuljain0831/video_creation_bot"
+  },
+  "image_critic": {
+    "_comment": "Local vision-model audit of generated images. Runs after a video is built, never during it; findings land in prompt_notes.json and improve the next run's prompts. Scaffolding for a young pipeline — set enabled false once the prompts stabilise.",
+    "enabled": true,
+    "host": "http://localhost:11434",
+    "model": "qwen2.5vl:3b",
+    "max_width": 768,
+    "timeout_seconds": 180,
+    "min_luma": 18,
+    "max_luma": 130
   }
 }

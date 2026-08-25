@@ -174,14 +174,13 @@ def check_and_log_quota(
         return False, reason
 
 
-def get_quota_summary(conn: sqlite3.Connection) -> dict[str, str]:
+def get_quota_report(conn: sqlite3.Connection) -> list[tuple[str, int, int, float]]:
     """
-    Return dict of {provider: "used/limit"} for today.
-    Used by Telegram daily summary.
+    Return [(provider, used, limit, percent_used), ...] for today, in config order.
     """
     cfg = load_quota_config()
     today = date.today().isoformat()
-    summary: dict[str, str] = {}
+    report: list[tuple[str, int, int, float]] = []
 
     for provider, pcfg in cfg["providers"].items():
         limit = pcfg["daily_limit"]
@@ -190,6 +189,28 @@ def get_quota_summary(conn: sqlite3.Connection) -> dict[str, str]:
             (provider, today),
         ).fetchone()
         used = row[0] if row else 0
-        summary[provider] = f"{used}/{limit}"
+        pct = (used / limit * 100.0) if limit else 0.0
+        report.append((provider, used, limit, pct))
 
-    return summary
+    return report
+
+
+def get_quota_summary(conn: sqlite3.Connection) -> dict[str, str]:
+    """
+    Return dict of {provider: "used/limit"} for today.
+    Used by Telegram daily summary.
+    """
+    return {p: f"{used}/{limit}" for p, used, limit, _ in get_quota_report(conn)}
+
+
+def format_quota_report(conn: sqlite3.Connection) -> str:
+    """Multi-line, aligned quota block printed at the end of every run."""
+    report = get_quota_report(conn)
+    if not report:
+        return ""
+
+    width = max(len(p) for p, _, _, _ in report)
+    lines = ["── Quota used today ──────────────────────"]
+    for provider, used, limit, pct in report:
+        lines.append(f"{provider:<{width}}  {used:>6}/{limit:<8} {pct:5.1f}%")
+    return "\n".join(lines)

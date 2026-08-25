@@ -38,7 +38,6 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
     from pipeline.script_gen import generate_script
     from pipeline.tts import synthesize
     from pipeline.scene_timing import compute_scene_durations
-    from pipeline.ffmpeg_assembler import assemble_from_images
     from pipeline.image_library import get_library_image, LibraryEmptyError
     from pipeline.pexels_library import get_pexels_image, PexelsError
     from pipeline.deity_map import find_best_image_for_scene
@@ -95,15 +94,34 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         run_slug = _make_slug(niche_id, script["story_title"], video_id)
 
         # ── Step 2: Images ───────────────────────────────────────────────────
+        from pipeline.image_gen import generate_image, ImageGenError
+        from pipeline.image_policy import (
+            GENERATED_SOURCES, LocalGenerationBlocked, is_procedural, resolve_image_source,
+        )
+
         images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths = []
-        use_pexels = niche.get("image_source", "library") == "pexels"
+        procedural   = is_procedural(niche)
+        image_source = resolve_image_source(niche)
+        is_generated = (not procedural) and image_source in GENERATED_SOURCES
         used_library_ids: set[int] = set()   # dedup: library image IDs used this video
         used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
 
-        for i, scene in enumerate(script["scenes"]):
+        if procedural:
+            log.info("run_retry: procedural niche — skipping image stage")
+
+        for i, scene in enumerate([] if procedural else script["scenes"]):
             try:
-                if use_pexels:
+                if is_generated:
+                    img_path = generate_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        cfg=cfg,
+                        local_only=(image_source == "comfyui"),
+                    )
+                elif image_source == "pexels":
                     fallback_q = cfg.pexels_library.get("fallback_query", "abstract cinematic background")
                     img_path = get_pexels_image(
                         image_prompt=scene["image_prompt"],
@@ -129,7 +147,7 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
                         preselected_row=img_row if img_row else None,
                         used_image_ids=used_library_ids,
                     )
-            except (LibraryEmptyError, PexelsError) as e:
+            except (LibraryEmptyError, PexelsError, ImageGenError, LocalGenerationBlocked) as e:
                 raise RuntimeError(f"Image fetch failed scene {i}: {e}") from e
             scene_image_paths.append(img_path)
 
@@ -151,8 +169,11 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         conn.commit()
 
         # ── Step 4: Assemble ─────────────────────────────────────────────────
+        from pipeline.renderer_dispatch import get_assembler
+
+        assemble = get_assembler(niche, cfg, title=script["story_title"], seed=video_id)
         output_path = str(Path(cfg.paths["video"]) / f"{run_slug}.mp4")
-        assemble_from_images(
+        assemble(
             scene_images=scene_image_paths,
             audio_path=audio_path,
             output_path=output_path,
@@ -217,4 +238,11 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         conn.commit()
         raise
     finally:
+        try:
+            from pipeline.quota_tracker import format_quota_report
+            report = format_quota_report(conn)
+            if report:
+                log.info("\n%s", report)
+        except Exception as e:
+            log.warning("Quota report failed (non-fatal): %s", e)
         conn.close()

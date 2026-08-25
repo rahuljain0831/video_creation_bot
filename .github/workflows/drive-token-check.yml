@@ -1,0 +1,38 @@
+name: Drive Token Expiry Check
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC (11:30 IST)
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install python-telegram-bot httpx
+
+      - name: Write token file
+        env:
+          DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$DRIVE_OAUTH_TOKEN" ]; then
+            echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
+          fi
+
+      - name: Check token expiry
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/drive_token_check.py
