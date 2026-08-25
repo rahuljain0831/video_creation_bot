@@ -273,6 +273,52 @@ def critique_image(
     return result
 
 
+def score_image_inline(
+    path: str | Path,
+    subject: str,
+    human_policy: str = "never",
+    cfg=None,
+) -> float:
+    """
+    Score one image for quality (0.0–1.0). Real-time, non-recording path.
+
+    Used by the inline quality gate in image_gen.generate_image() to decide
+    whether to accept an image or retry with another provider/attempt.
+
+    Returns 1.0 (accept) when the critic is unavailable — never blocks the
+    pipeline due to a missing Ollama daemon.
+
+    Score composition:
+      - Base: subject overlap (Jaccard, 0–1)
+      - -0.3 per anatomy violation (face/hands visible under "obscured" policy)
+      - -0.15 per exposure issue (too_dark / too_bright)
+    """
+    try:
+        c = critique_image(
+            path, subject,
+            scene_index=0,
+            human_policy=human_policy,
+            cfg=cfg,
+            record=False,
+        )
+    except Exception:
+        return 1.0  # never block on critic failure
+
+    if c.error:
+        # Critic unavailable (Ollama down, unreadable image, etc.) — accept
+        return 1.0
+
+    score = c.overlap if c.overlap is not None else 1.0
+
+    for flaw in c.flaws:
+        if flaw in ("face_visible", "hands_visible"):
+            score -= 0.3
+        elif flaw in ("too_dark", "too_bright"):
+            score -= 0.15
+
+    return float(max(0.0, min(1.0, score)))
+
+
 def critique_run(
     scenes: list[dict],
     image_paths: list[str],

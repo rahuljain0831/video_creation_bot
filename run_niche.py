@@ -124,8 +124,25 @@ def _fetch_scene_images(
     _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
     _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
 
+    manual_dir = Path(images_dir) / "manual"
+
     for i, scene in enumerate(script["scenes"]):
         log.info("  Image lookup %d/%d...", i + 1, script["scene_count"])
+
+        # Manual override: user dropped images in output/images/{slug}/manual/
+        # Checked before generation/library so the user can override any scene.
+        manual_path: Path | None = None
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            candidate = manual_dir / f"scene_{i:02d}{ext}"
+            if candidate.exists():
+                manual_path = candidate
+                break
+        if manual_path is not None:
+            log.info("  Scene %d → manual image: %s", i + 1, manual_path)
+            img_path = str(ensure_render_size(str(manual_path), render_w, render_h))
+            scene_image_paths.append(img_path)
+            continue
+
         try:
             if is_generated:
                 img_path = generate_image(
@@ -259,6 +276,10 @@ def main() -> None:
     parser.add_argument("--content-type", default="story",
                         choices=["story", "teachings", "facts"],
                         help="Content format: story (default), teachings, or facts")
+    parser.add_argument("--export-prompts", action="store_true",
+                        help="Generate universal prompts via Ollama, export to text file, then exit. "
+                             "Use the exported prompts in any browser AI tool, then drop images in "
+                             "output/images/{slug}/manual/ and re-run.")
     args = parser.parse_args()
 
     # ── Load config ───────────────────────────────────────────────────────────
@@ -333,6 +354,21 @@ def main() -> None:
         log.info("Run slug: %s", run_slug)
 
         _save_script(script, niche, story_seed, video_id, run_slug, cfg)
+
+        if args.export_prompts:
+            log.info("[1.5/5] Enriching prompts via Ollama for universal export...")
+            from pipeline.prompt_refiner import enrich_for_universal, export_prompts_as_text
+            script["scenes"] = enrich_for_universal(script["scenes"], niche, cfg)
+            prompts_file = export_prompts_as_text(script["scenes"], run_slug, niche, cfg)
+            print(f"\n{'='*60}")
+            print(f"Prompts written to: {prompts_file}")
+            print(f"Drop your images in: output/images/{run_slug}/manual/")
+            print(f"Name them: scene_00.png, scene_01.png, ...")
+            print(f"Then re-run: python run_niche.py {niche['id']}")
+            print(f"{'='*60}\n")
+            conn.execute("UPDATE videos SET status='screened' WHERE id=?", (video_id,))
+            conn.commit()
+            return
 
         if args.dry_run:
             log.info("--dry-run: stopping after script. Decisions logged to DB.")

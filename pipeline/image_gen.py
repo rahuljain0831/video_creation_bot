@@ -499,6 +499,15 @@ def generate_image(
     output_dir_path = Path(output_dir)
     last_error: Exception | None = None
 
+    # Quality gate config — optional, disabled by default.
+    quality_gate = config.get("quality_gate", {})
+    qg_enabled   = bool(quality_gate.get("enabled", False))
+    qg_threshold = float(quality_gate.get("threshold", 0.40))
+    qg_log       = bool(quality_gate.get("log_scores", True))
+    # Tracks the best candidate seen so far when quality gate rejects images.
+    best_path:  str | None = None
+    best_score: float      = -1.0
+
     # ── Cloud providers ──────────────────────────────────────────────────────
     #
     # Each provider gets several attempts, not one. The keyless providers throttle
@@ -541,7 +550,30 @@ def generate_image(
                     output_path.write_bytes(data)
                     log.info("Image gen success: %s (%d bytes, provider=%s)",
                              output_path, len(data), provider["name"])
-                    return str(output_path)
+
+                    if qg_enabled:
+                        from pipeline.image_critic import score_image_inline
+                        score = score_image_inline(
+                            str(output_path), image_prompt, policy, cfg
+                        )
+                        if qg_log:
+                            log.info(
+                                "Quality gate: scene=%d score=%.2f threshold=%.2f provider=%s",
+                                scene_index, score, qg_threshold, provider["name"],
+                            )
+                        if score >= qg_threshold:
+                            return str(output_path)
+                        # Below threshold — track best and keep retrying
+                        if score > best_score:
+                            best_path, best_score = str(output_path), score
+                        log.warning(
+                            "Quality gate: scene=%d score=%.2f below %.2f — retrying",
+                            scene_index, score, qg_threshold,
+                        )
+                        retryable_failure = True
+                    else:
+                        return str(output_path)
+
                 except Exception as e:
                     last_error = e
                     if _is_terminal(e):
@@ -559,6 +591,14 @@ def generate_image(
                 pause = base_sleep * (2 ** (attempt - 1))
                 log.info("All providers busy for scene %d — retrying in %.0fs", scene_index, pause)
                 time.sleep(pause)
+
+    # Quality gate exhausted all attempts — return the best candidate found.
+    if qg_enabled and best_path is not None:
+        log.info(
+            "Quality gate: returning best candidate (score=%.2f) for scene %d",
+            best_score, scene_index,
+        )
+        return best_path
 
     # ── Local ComfyUI fallback ───────────────────────────────────────────────
     if not local_generation_allowed(niche):

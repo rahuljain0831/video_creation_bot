@@ -319,7 +319,13 @@
     "max_attempts": 6,
     "_human_policy_comment": "Global default. Per-niche 'human_policy' overrides it: never | obscured | none.",
     "retry_base_sleep": 3.0,
-    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, ugly, missing limb, long neck, out of frame, watermark, text, nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, provocative, topless, bare chest, revealing clothing, bare body, bare shoulders, underwear, lingerie, swimsuit, bikini, suggestive, seductive, sensual, intimate, undressed, shirtless, skimpy, see-through, transparent clothing, low-cut, midriff, lewd, explicit, adult content, risque, indecent"
+    "negative_prompt": "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, ugly, missing limb, long neck, out of frame, watermark, text, nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, provocative, topless, bare chest, revealing clothing, bare body, bare shoulders, underwear, lingerie, swimsuit, bikini, suggestive, seductive, sensual, intimate, undressed, shirtless, skimpy, see-through, transparent clothing, low-cut, midriff, lewd, explicit, adult content, risque, indecent",
+    "quality_gate": {
+      "_comment": "Inline vision-model quality check. Rejects images scoring below threshold and retries. Needs Ollama + qwen2.5vl:3b (same as image_critic). Adds ~15s per scene per attempt.",
+      "enabled": false,
+      "threshold": 0.40,
+      "log_scores": true
+    }
   },
   "comfyui": {
     "base_url": "http://127.0.0.1:8188",
