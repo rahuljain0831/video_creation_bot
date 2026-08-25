@@ -301,6 +301,13 @@ def generate_script(
     art_style   = niche.get("art_style_prompt_suffix", "")
     default_rules = "Specify the main subject prominently in the foreground."
     image_prompt_rules = niche.get("image_prompt_rules", default_rules)
+    image_prompt_rules += (
+        " CONTENT SAFETY (MANDATORY): NEVER describe nudity, bare skin, exposed body, "
+        "revealing clothing, suggestive poses, or any sexual content. All characters "
+        "must be fully clothed in modest attire. Deities and mythological figures must "
+        "wear traditional full-coverage garments. This is non-negotiable — account ban "
+        "risk for violations."
+    )
 
     # Apply mythology sub-type label if provided
     if myth_type and niche_id == "mythology":

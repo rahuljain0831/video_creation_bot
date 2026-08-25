@@ -113,7 +113,13 @@ _DEFAULTS = {
     "timeout_seconds": 120,
     "negative_prompt": (
         "deformed, blurry, bad anatomy, disfigured, mutation, extra limb, "
-        "ugly, missing limb, long neck, out of frame, watermark, text"
+        "ugly, missing limb, long neck, out of frame, watermark, text, "
+        "nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, "
+        "provocative, topless, bare chest, revealing clothing, "
+        "bare body, bare shoulders, underwear, lingerie, swimsuit, bikini, "
+        "suggestive, seductive, sensual, intimate, undressed, shirtless, "
+        "skimpy, see-through, transparent clothing, low-cut, midriff, "
+        "lewd, explicit, adult content, risque, indecent"
     ),
     "no_humans": True,
     "local_fallback": True,

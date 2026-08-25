@@ -44,7 +44,10 @@ NO_HUMAN_POSITIVE_SUFFIX = "no people, no humans, unpopulated empty scene"
 
 NO_HUMAN_NEGATIVE_TERMS = (
     "person, people, human, man, woman, child, boy, girl, face, portrait, "
-    "hands, fingers, arms, legs, body, crowd, human figure, silhouette of a person"
+    "hands, fingers, arms, legs, body, crowd, human figure, silhouette of a person, "
+    "nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, topless, "
+    "bare body, underwear, lingerie, swimsuit, bikini, suggestive, seductive, "
+    "sensual, intimate, undressed, shirtless, skimpy, see-through, lewd, explicit"
 )
 
 # "obscured": the figure stays, the anatomy that breaks does not. Every phrase
@@ -58,15 +61,18 @@ OBSCURED_POSITIVE_SUFFIX = (
 # taken out of the subject's budget. Long-form constraints are how a 55-word
 # prompt becomes a 111-word one and stops rendering the subject at all.
 FLUX_CONSTRAINTS = {
-    "never":    "no people",
-    "obscured": "no face, no hands",
-    "none":     "",
+    "never":    "no people, no nudity",
+    "obscured": "no face, no hands, no nudity, fully clothed",
+    "none":     "no nudity, fully clothed",
 }
 
 OBSCURED_NEGATIVE_TERMS = (
     "face, facial features, eyes, mouth, teeth, portrait, close-up of a face, "
     "looking at camera, hands, fingers, visible fingers, deformed hands, "
-    "extra fingers, mangled hands, distorted face, disfigured face"
+    "extra fingers, mangled hands, distorted face, disfigured face, "
+    "nudity, nude, nsfw, sexual, naked, exposed skin, cleavage, erotic, topless, "
+    "bare body, underwear, lingerie, swimsuit, bikini, suggestive, seductive, "
+    "sensual, intimate, undressed, shirtless, skimpy, see-through, lewd, explicit"
 )
 
 # Chunks naming a face or a hand are dropped even under "obscured" — asking for

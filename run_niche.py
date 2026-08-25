@@ -264,9 +264,9 @@ def main() -> None:
     # ── Load config ───────────────────────────────────────────────────────────
     from config import cfg
 
-    niches = cfg.niches
+    niches = [n for n in cfg.niches if n.get("enabled", True)]
     if not niches:
-        log.error("No niches defined in settings.json")
+        log.error("No enabled niches in settings.json")
         sys.exit(1)
 
     niche        = _select_niche(niches, args.niche)
