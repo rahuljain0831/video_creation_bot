@@ -11,8 +11,12 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+UPLOAD_MAX_ATTEMPTS = 3
+UPLOAD_RETRY_BASE_SLEEP = 30   # seconds; doubles each attempt
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -47,6 +51,51 @@ def _notify_telegram(platform, title, success, post_id=""):
         log.warning("Telegram notify failed: %s", e)
 
 
+def _is_transient(error: Exception) -> bool:
+    """True for errors worth retrying (network, rate-limit, server error)."""
+    msg = str(error).lower()
+    # Auth errors are permanent — retrying won't help
+    if any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token")):
+        return False
+    # File/config errors are permanent
+    if isinstance(error, (FileNotFoundError, ValueError, json.JSONDecodeError)):
+        return False
+    # Rate-limit and server errors are transient
+    if any(x in msg for x in ("429", "500", "502", "503", "504", "timeout", "connection")):
+        return True
+    # Default: retry unknown errors (safer than silently dropping)
+    return True
+
+
+def _notify_token_alert(platform: str, error: Exception) -> None:
+    """Send Telegram alert when upload fails with an auth error."""
+    msg = str(error).lower()
+    if not any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token")):
+        return
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return
+
+    alert = (
+        f"\U0001f511 *{platform.title()} token expired*\n"
+        f"Upload rejected with auth error. Re-run auth setup:\n"
+        f"`python scripts/{platform}_auth_setup.py`"
+    )
+
+    async def notify():
+        from telegram import Bot
+        from telegram.request import HTTPXRequest
+        async with Bot(token=bot_token, request=HTTPXRequest(connect_timeout=30, read_timeout=60)) as bot:
+            await bot.send_message(chat_id=chat_id, text=alert, parse_mode="Markdown")
+
+    try:
+        asyncio.run(notify())
+    except Exception as e:
+        log.warning("Token alert Telegram send failed: %s", e)
+
+
 def process_schedule(manifest, manifest_drive_id, service):
     """Process a single schedule manifest. Returns True on success."""
     from pipeline.drive_storage import download_from_drive, move_drive_file
@@ -63,17 +112,35 @@ def process_schedule(manifest, manifest_drive_id, service):
     download_from_drive(drive_file_id, video_path)
     log.info("Downloaded video: %s (%d bytes)", video_path, video_path.stat().st_size)
 
-    try:
-        from scripts.upload_all_platforms import upload_all
-        upload_results = upload_all(
-            video_path=video_path,
-            title=title,
-            description=manifest.get("caption", ""),
-            hashtags=manifest.get("hashtags", []),
-            platforms_filter=[platform],
-        )
-    except Exception as e:
-        log.error("Upload failed for schedule_id=%d: %s", schedule_id, e)
+    last_error = None
+    upload_results = []
+    from scripts.upload_all_platforms import upload_all
+    for attempt in range(1, UPLOAD_MAX_ATTEMPTS + 1):
+        try:
+            upload_results = upload_all(
+                video_path=video_path,
+                title=title,
+                description=manifest.get("caption", ""),
+                hashtags=manifest.get("hashtags", []),
+                platforms_filter=[platform],
+            )
+            last_error = None
+            break   # success
+        except Exception as e:
+            last_error = e
+            if not _is_transient(e) or attempt == UPLOAD_MAX_ATTEMPTS:
+                log.error("Upload failed (attempt %d/%d, non-retryable): %s",
+                          attempt, UPLOAD_MAX_ATTEMPTS, e)
+                break
+            sleep = UPLOAD_RETRY_BASE_SLEEP * (2 ** (attempt - 1))
+            log.warning("Upload attempt %d/%d failed (%s) — retrying in %ds",
+                        attempt, UPLOAD_MAX_ATTEMPTS, e, sleep)
+            time.sleep(sleep)
+
+    if last_error is not None:
+        log.error("Upload failed for schedule_id=%d after %d attempts: %s",
+                  schedule_id, UPLOAD_MAX_ATTEMPTS, last_error)
+        _notify_token_alert(platform, last_error)
         _notify_telegram(platform, title, False)
         return False
 

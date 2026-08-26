@@ -66,3 +66,26 @@ jobs:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           SCHEDULE_ID: ${{ github.event.client_payload.schedule_id || github.event.inputs.schedule_id || '' }}
         run: python scripts/run_scheduled_upload.py ${SCHEDULE_ID:+"$SCHEDULE_ID"}
+
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id || github.event.inputs.schedule_id || '' }}
+        run: |
+          python - <<'EOF'
+          import os, json, urllib.request
+          token  = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat   = os.environ["TELEGRAM_CHAT_ID"]
+          url    = os.environ["RUN_URL"]
+          sid    = os.environ.get("SCHEDULE_ID", "")
+          detail = f" (schedule `{sid}`)" if sid else ""
+          msg    = f"\u274c *scheduled-upload failed*{detail}\n{url}"
+          data   = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "Markdown"}).encode()
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data, headers={"Content-Type": "application/json"}
+          ))
+          EOF

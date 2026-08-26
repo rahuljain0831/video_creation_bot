@@ -1,14 +1,15 @@
-name: Daily Engagement Fetch
+name: Daily Platform Token Health Check
 
 on:
   schedule:
-    - cron: "30 0 * * *"
+    # 07:00 UTC daily — after drive-token-check (06:00) and before uploads start
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 jobs:
-  fetch:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -19,24 +20,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Write Drive credentials
+      - name: Write credentials
         env:
-          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
+          YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
         run: |
           mkdir -p credentials
-          echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+          if [ -n "$INSTAGRAM_CREDS_JSON" ]; then
+            echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+          fi
+          if [ -n "$YOUTUBE_CREDS_JSON" ]; then
+            echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
+          fi
 
-      - name: Fetch engagement and recalculate
+      - name: Check platform tokens
         env:
-          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
-          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-        run: python scripts/run_engagement_fetch.py
+        run: python scripts/platform_token_check.py
 
       - name: Notify failure
         if: failure()
@@ -50,7 +52,7 @@ jobs:
           token = os.environ["TELEGRAM_BOT_TOKEN"]
           chat  = os.environ["TELEGRAM_CHAT_ID"]
           url   = os.environ["RUN_URL"]
-          msg   = f"\u274c *engagement-fetch failed*\n{url}"
+          msg   = f"\u274c *token-health-check crashed*\n{url}"
           data  = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "Markdown"}).encode()
           urllib.request.urlopen(urllib.request.Request(
               f"https://api.telegram.org/bot{token}/sendMessage",
