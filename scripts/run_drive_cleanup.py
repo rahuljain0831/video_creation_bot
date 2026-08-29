@@ -18,7 +18,8 @@ def main():
 
     uploaded = delete_old_files("uploaded", older_than_days=7)
     failed = delete_old_files("failed", older_than_days=14)
-    log.info("Cleaned up: %d uploaded, %d failed files", uploaded, failed)
+    pending = delete_old_files("pending", older_than_days=30)
+    log.info("Cleaned up: %d uploaded, %d failed, %d stale-pending files", uploaded, failed, pending)
 
 
 if __name__ == "__main__":

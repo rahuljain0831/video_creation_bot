@@ -303,21 +303,32 @@ def schedule_video(
     drive_file_id: str,
     drive_manifest_id: str,
     conn,
+    *,
+    force_platform: str | None = None,
 ) -> dict:
     """
     Full scheduling flow for a video:
-    1. Rotate platform.
+    1. Rotate platform (or use force_platform to target a specific one).
     2. Pick optimal upload time.
     3. Insert into upload_schedule.
     4. Register cron-job.org job.
     5. Update upload_schedule with cronjob_id.
     6. Return summary dict.
+
+    force_platform: when set, skip round-robin and schedule for exactly this
+    platform ("youtube" | "instagram" | "facebook"). Existing callers are
+    unaffected (they pass nothing, so round-robin behaviour is unchanged).
     """
     cfg = _get_scheduler_config()
     github_repo: str = cfg.get("github_repo", "your-username/video-creation-agent")
     repo_owner, repo_name = github_repo.split("/", 1)
 
-    platform = get_next_platform(niche_id, conn)
+    if force_platform is not None:
+        if force_platform not in _PLATFORMS:
+            raise ValueError(f"force_platform must be one of {_PLATFORMS}, got {force_platform!r}")
+        platform = force_platform
+    else:
+        platform = get_next_platform(niche_id, conn)
     scheduled_at = pick_optimal_time(niche_id, platform, conn)
     caption_variant = random.choice(["A", "B"])
 

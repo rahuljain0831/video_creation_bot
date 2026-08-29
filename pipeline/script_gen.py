@@ -254,6 +254,16 @@ def _enforce_shot_variety(scenes: list[dict]) -> None:
             log.info("script_gen: forced a detail shot to meet the close-shot quota")
 
 
+def _get_used_titles(conn: sqlite3.Connection, niche_id: str) -> list[str]:
+    """Return all story titles already generated for this niche (for dedup)."""
+    rows = conn.execute(
+        "SELECT chosen_option FROM decisions WHERE decision_point='script_generation' "
+        "AND reasoning LIKE ?",
+        (f"%niche={niche_id}%",),
+    ).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
 def generate_script(
     niche: dict,
     story_seed: str,
@@ -333,11 +343,19 @@ def generate_script(
             "Format: dramatic narrative story with rising tension and resolution."
         )
 
+    used_titles = _get_used_titles(conn, niche_id)
+    avoid_block = (
+        "\n\nDo NOT repeat or closely paraphrase any of these already-used titles:\n"
+        + "\n".join(f"  - {t}" for t in used_titles[-50:])
+        if used_titles
+        else ""
+    )
+
     story_directive = (
         f'Base the content on: "{story_seed}"'
         if story_seed.strip()
         else f"Choose an engaging, original {niche_label} topic."
-    )
+    ) + avoid_block
 
     system = (
         "You are a scriptwriter for short-form vertical social media story videos. "
