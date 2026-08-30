@@ -12,7 +12,7 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 UPLOAD_MAX_ATTEMPTS = 3
@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("scheduled_upload")
 
 
-def _notify_telegram(platform, title, success, post_id=""):
+def _notify_telegram(platform, title, success, post_id="", extra=""):
     """Send Telegram notification about upload result."""
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -38,6 +38,8 @@ def _notify_telegram(platform, title, success, post_id=""):
         msg += f"\nhttps://youtu.be/{post_id}"
     elif post_id:
         msg += f"\nPost ID: {post_id}"
+    if extra:
+        msg += f"\n{extra}"
 
     async def notify():
         from telegram import Bot
@@ -96,6 +98,29 @@ def _notify_token_alert(platform: str, error: Exception) -> None:
         log.warning("Token alert Telegram send failed: %s", e)
 
 
+_MAX_MANIFEST_RETRIES = 3   # manifest-level retries (each gets UPLOAD_MAX_ATTEMPTS per-run tries)
+_RETRY_DELAY_HOURS = 6
+
+
+def _write_retry_manifest(manifest: dict, retry_count: int) -> None:
+    """Write a new manifest to Drive pending/ with updated scheduled_at and retry_count."""
+    from pipeline.drive_storage import upload_to_drive
+
+    new = {
+        **manifest,
+        "retry_count": retry_count,
+        "scheduled_at": (
+            datetime.now(timezone.utc) + timedelta(hours=_RETRY_DELAY_HOURS)
+        ).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    schedule_id = manifest["schedule_id"]
+    tmp = Path(tempfile.mkdtemp()) / f"{schedule_id}_retry{retry_count}_schedule.json"
+    tmp.write_text(json.dumps(new, indent=2))
+    upload_to_drive(tmp, folder_name="pending")
+    log.info("Retry manifest written: schedule_id=%d retry=%d/%d",
+             schedule_id, retry_count, _MAX_MANIFEST_RETRIES)
+
+
 def process_schedule(manifest, manifest_drive_id, service):
     """Process a single schedule manifest. Returns True on success."""
     from pipeline.drive_storage import download_from_drive, move_drive_file
@@ -141,7 +166,25 @@ def process_schedule(manifest, manifest_drive_id, service):
         log.error("Upload failed for schedule_id=%d after %d attempts: %s",
                   schedule_id, UPLOAD_MAX_ATTEMPTS, last_error)
         _notify_token_alert(platform, last_error)
-        _notify_telegram(platform, title, False)
+
+        retry_count = manifest.get("retry_count", 0) + 1
+        if _is_transient(last_error) and retry_count <= _MAX_MANIFEST_RETRIES:
+            # Reschedule — don't move to failed/ yet
+            try:
+                _write_retry_manifest(manifest, retry_count)
+                retry_at = (datetime.now(timezone.utc) + timedelta(hours=_RETRY_DELAY_HOURS))
+                retry_ist = (retry_at + timedelta(hours=5, minutes=30)).strftime("%H:%M IST")
+                _notify_telegram(
+                    platform, title, False,
+                    extra=f"Retry {retry_count}/{_MAX_MANIFEST_RETRIES} scheduled {retry_ist}",
+                )
+                log.info("Rescheduled: schedule_id=%d retry=%d/%d at +%dh",
+                         schedule_id, retry_count, _MAX_MANIFEST_RETRIES, _RETRY_DELAY_HOURS)
+            except Exception as exc:
+                log.error("Failed to write retry manifest: %s", exc)
+                _notify_telegram(platform, title, False)
+        else:
+            _notify_telegram(platform, title, False)
         return False
 
     success = False

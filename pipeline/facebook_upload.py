@@ -9,6 +9,7 @@ Page Access Token before uploading.
 import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -22,8 +23,32 @@ _POLL_INTERVAL_S = 5
 _POLL_MAX_ATTEMPTS = 120  # 10 minutes max
 
 
+def _refresh_token(data: dict, creds_path: Path) -> dict:
+    """Exchange current token for a fresh long-lived token via Meta API."""
+    resp = requests.get(
+        f"{GRAPH_API_BASE}/oauth/access_token",
+        params={
+            "grant_type": "fb_exchange_token",
+            "client_id": data["app_id"],
+            "client_secret": data["app_secret"],
+            "fb_exchange_token": data["access_token"],
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    token_data = resp.json()
+    data["access_token"] = token_data["access_token"]
+    if "expires_in" in token_data:
+        data["expires_at"] = (
+            datetime.now(timezone.utc) + timedelta(seconds=token_data["expires_in"])
+        ).isoformat()
+    creds_path.write_text(json.dumps(data, indent=2))
+    log.info("Facebook token refreshed, expires_at=%s", data.get("expires_at"))
+    return data
+
+
 def _load_credentials(creds_path: Path) -> dict:
-    """Load credentials and validate required fields."""
+    """Load credentials, refresh token if near expiry, validate required fields."""
     data = json.loads(creds_path.read_text())
     required = ("access_token", "page_id", "app_id", "app_secret")
     missing = [k for k in required if not data.get(k)]
@@ -32,6 +57,16 @@ def _load_credentials(creds_path: Path) -> dict:
             f"Credentials file {creds_path} missing keys: {', '.join(missing)}. "
             "Ensure page_id is set in the credentials file."
         )
+    expires_at = data.get("expires_at")
+    if expires_at:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at)
+            days_left = (exp_dt - datetime.now(timezone.utc)).days
+            if days_left < 7:
+                log.info("Facebook token expires in %d days — refreshing", days_left)
+                data = _refresh_token(data, creds_path)
+        except Exception as exc:
+            log.warning("Facebook token refresh failed: %s", exc)
     return data
 
 
