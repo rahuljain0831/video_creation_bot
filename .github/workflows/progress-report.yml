@@ -1,0 +1,58 @@
+name: Progress Report
+
+on:
+  schedule:
+    - cron: "0 9 */3 * *"   # 9 AM UTC = 2:30 PM IST, every 3rd day of month
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Drive credentials
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          mkdir -p credentials
+          echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+
+      - name: Run progress report
+        env:
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/run_progress_report.py
+
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'EOF'
+          import os, json, urllib.request
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat  = os.environ["TELEGRAM_CHAT_ID"]
+          url   = os.environ["RUN_URL"]
+          msg   = f"\u274c *progress-report failed*\n{url}"
+          data  = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "Markdown"}).encode()
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data, headers={"Content-Type": "application/json"}
+          ))
+          EOF
