@@ -31,6 +31,7 @@ jobs:
 
       - name: Clean up old files
         env:
+          GOOGLE_DRIVE_AUTH: service_account
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
         run: python scripts/run_drive_cleanup.py
