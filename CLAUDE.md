@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL — GitHub Actions Drive Auth (DO NOT REMOVE)
+
+All three workflows require these env vars under every Drive-touching step.
+Removing any of them silently breaks the pipeline.
+
+```
+GOOGLE_DRIVE_AUTH: service_account
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
+GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
+GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
+GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
+```
+
+`engagement-fetch.yml` also needs `GOOGLE_DRIVE_STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}`.
+
+Why: service account has `drive.file` scope — it cannot discover folders owned by another user.
+`_get_subfolder()` in `pipeline/drive_storage.py` checks these env vars first.
+Without them, SA creates a new empty subfolder and finds nothing (or crashes).
+
+These secrets must exist in GitHub repo settings: Settings → Secrets → Actions.
+
 ## Commands
 
 ```bash
@@ -55,8 +77,10 @@ python scripts/critique_run.py --notes               # what the critic has learn
 python verify_keys.py
 
 # Tests
-pytest                   # all tests
-pytest -m "not slow"     # skip video-writing / network tests
+pytest                                   # all tests
+pytest -m "not slow"                     # skip video-writing / network tests
+pytest tests/test_prompt_assembly.py     # single test file
+pytest -k "test_name"                    # single test by name
 ```
 
 ## Architecture
