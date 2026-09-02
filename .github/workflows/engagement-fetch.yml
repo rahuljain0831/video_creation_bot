@@ -34,6 +34,10 @@ jobs:
           GOOGLE_DRIVE_AUTH: service_account
           GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
+          GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
+          GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
+          GOOGLE_DRIVE_STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
