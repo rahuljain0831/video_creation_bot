@@ -19,7 +19,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_PLATFORMS = ["youtube", "instagram", "facebook"]
+_PLATFORMS = ["youtube", "facebook"]  # instagram disabled: account lost
 _IST_OFFSET = timedelta(hours=5, minutes=30)
 
 # ---------------------------------------------------------------------------
