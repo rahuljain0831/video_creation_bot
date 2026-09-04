@@ -202,12 +202,31 @@ _STATUS_EMOJI = {
 }
 
 
+def _is_platform_enabled(name: str) -> bool:
+    """Check social_config.json — skip disabled platforms."""
+    try:
+        cfg_path = Path(__file__).parent.parent / "social_config.json"
+        with open(cfg_path) as f:
+            sc = json.load(f)
+        return sc.get("platforms", {}).get(name.lower(), {}).get("enabled", True)
+    except Exception:
+        return True  # assume enabled if config unreadable
+
+
 def main() -> int:
-    results = {
-        "Instagram": check_instagram(),
-        "Facebook":  check_facebook(),
-        "YouTube":   check_youtube(),
+    _CHECKS = {
+        "Instagram": ("instagram", check_instagram),
+        "Facebook":  ("facebook",  check_facebook),
+        "YouTube":   ("youtube",   check_youtube),
     }
+
+    results = {}
+    for label, (key, checker) in _CHECKS.items():
+        if _is_platform_enabled(key):
+            results[label] = checker()
+        else:
+            results[label] = {"status": "ok", "detail": "platform disabled — skipped"}
+            log.info("Skipping %s (disabled in social_config.json)", label)
 
     for platform, r in results.items():
         log.info("%s: %s — %s", platform, r["status"], r["detail"])

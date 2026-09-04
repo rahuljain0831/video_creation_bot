@@ -10,6 +10,7 @@ Folder structure in Drive:
 import io
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,6 +27,24 @@ _ROOT_FOLDER_NAME = "video-uploads"
 _TOKEN_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "drive_token.json")
 
 _service_cache = None
+
+_TRANSIENT_CODES = (429, 500, 502, 503, 504)
+
+
+def _retry_drive(func, *args, attempts=3, **kwargs):
+    """Retry a Drive API call on transient HTTP errors."""
+    from googleapiclient.errors import HttpError
+    for attempt in range(1, attempts + 1):
+        try:
+            return func(*args, **kwargs)
+        except HttpError as exc:
+            if exc.resp.status not in _TRANSIENT_CODES or attempt == attempts:
+                raise
+            pause = 2 ** attempt
+            log.warning("Drive %s %d — retry %d/%d in %ds",
+                        func.__name__ if hasattr(func, '__name__') else 'op',
+                        exc.resp.status, attempt, attempts, pause)
+            time.sleep(pause)
 
 
 def _build_service():
@@ -181,7 +200,8 @@ def upload_to_drive(local_path: Path, folder_name: str = "pending") -> str:
     }
 
     media = MediaFileUpload(str(local_path), resumable=True)
-    file_obj = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    req = service.files().create(body=file_metadata, media_body=media, fields="id")
+    file_obj = _retry_drive(req.execute)
     file_id = file_obj["id"]
 
     # If uploading via OAuth, share with service account so CI can access
@@ -220,13 +240,15 @@ def download_from_drive(file_id: str, dest_path: Path) -> Path:
 
     service = _build_service()
 
-    request = service.files().get_media(fileId=file_id)
-    with io.FileIO(str(dest_path), "wb") as fh:
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
+    def _do_download():
+        request = service.files().get_media(fileId=file_id)
+        with io.FileIO(str(dest_path), "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
 
+    _retry_drive(_do_download)
     return dest_path
 
 
@@ -247,12 +269,13 @@ def move_drive_file(file_id: str, dest_folder_name: str) -> None:
     dest_folder_id = _get_subfolder(dest_folder_name)
 
     # Move file
-    service.files().update(
+    req = service.files().update(
         fileId=file_id,
         addParents=dest_folder_id,
         removeParents=previous_parents,
         fields="id, parents",
-    ).execute()
+    )
+    _retry_drive(req.execute)
 
 
 def delete_old_files(folder_name: str, older_than_days: int = 7) -> int:
@@ -272,15 +295,27 @@ def delete_old_files(folder_name: str, older_than_days: int = 7) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
     cutoff_str = cutoff.isoformat()
 
-    # Query for files older than cutoff
+    # Query for files older than cutoff (paginated)
     query = f"'{folder_id}' in parents and createdTime < '{cutoff_str}' and trashed = false"
 
-    results = service.files().list(q=query, spaces="drive", fields="files(id)", pageSize=100).execute()
-    files = results.get("files", [])
+    deleted = 0
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=query, spaces="drive", fields="files(id),nextPageToken",
+            pageSize=100, pageToken=page_token,
+        ).execute()
 
-    # Delete each file
-    for file_obj in files:
-        service.files().delete(fileId=file_obj["id"]).execute()
-        log.info(f"Deleted file {file_obj['id']} from {folder_name}")
+        for file_obj in results.get("files", []):
+            try:
+                _retry_drive(service.files().delete(fileId=file_obj["id"]).execute)
+                deleted += 1
+                log.info("Deleted file %s from %s", file_obj["id"], folder_name)
+            except Exception as exc:
+                log.warning("Failed to delete %s: %s", file_obj["id"], exc)
 
-    return len(files)
+        page_token = results.get("nextPageToken")
+        if not page_token:
+            break
+
+    return deleted

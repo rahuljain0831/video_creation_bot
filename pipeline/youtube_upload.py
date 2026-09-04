@@ -18,6 +18,13 @@ log = logging.getLogger(__name__)
 
 def _load_youtube_credentials(creds_path: Path) -> Credentials:
     data = json.loads(creds_path.read_text())
+    required = ("refresh_token", "token_uri", "client_id", "client_secret")
+    missing = [k for k in required if not data.get(k)]
+    if missing:
+        raise ValueError(
+            f"YouTube credentials {creds_path} missing keys: {', '.join(missing)}. "
+            "Re-run scripts/youtube_auth_setup.py."
+        )
     creds = Credentials(
         token=data.get("token"),
         refresh_token=data["refresh_token"],
@@ -27,8 +34,10 @@ def _load_youtube_credentials(creds_path: Path) -> Credentials:
         scopes=data.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
     )
     if creds.expired or not creds.valid:
-        creds.refresh(Request())
-        # Save refreshed token back
+        try:
+            creds.refresh(Request())
+        except Exception as exc:
+            raise RuntimeError(f"YouTube token refresh failed: {exc}") from exc
         data["token"] = creds.token
         creds_path.write_text(json.dumps(data, indent=2))
         log.info("Refreshed YouTube access token")

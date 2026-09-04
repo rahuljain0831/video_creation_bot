@@ -19,7 +19,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_PLATFORMS = ["youtube", "facebook"]  # instagram disabled: account lost
+_PLATFORMS = ["youtube", "instagram", "facebook"]
 _IST_OFFSET = timedelta(hours=5, minutes=30)
 
 # ---------------------------------------------------------------------------
@@ -207,7 +207,11 @@ def create_upload_job(
     Raises RuntimeError if the API call fails.
     """
     api_key = os.environ.get("CRONJOB_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("CRONJOB_API_KEY env var not set — cannot create upload job")
     github_token = os.environ.get("GITHUB_DISPATCH_TOKEN", "")
+    if not github_token:
+        raise RuntimeError("GITHUB_DISPATCH_TOKEN env var not set — cannot create upload job")
 
     schedule = {
         "timezone": "UTC",
@@ -271,6 +275,8 @@ def create_upload_job(
 
     data = resp.json()
     job_id = str(data.get("jobId", data.get("job", {}).get("jobId", "")))
+    if not job_id:
+        raise RuntimeError(f"cron-job.org returned empty job ID: {data}")
     return job_id
 
 
@@ -330,6 +336,9 @@ def schedule_video(
     else:
         platform = get_next_platform(niche_id, conn)
     scheduled_at = pick_optimal_time(niche_id, platform, conn)
+    if scheduled_at <= datetime.now(timezone.utc):
+        logger.warning("pick_optimal_time returned past time %s — pushing to tomorrow", scheduled_at)
+        scheduled_at = scheduled_at + timedelta(days=1)
     caption_variant = random.choice(["A", "B"])
 
     scheduled_at_str = scheduled_at.strftime("%Y-%m-%d %H:%M:%S")

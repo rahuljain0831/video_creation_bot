@@ -275,6 +275,9 @@ def main():
     if not video_path.exists():
         log.error("Video not found: %s", video_path)
         sys.exit(1)
+    if video_path.stat().st_size == 0:
+        log.error("Video file is empty (0 bytes): %s", video_path)
+        sys.exit(1)
 
     # Resolve title
     title = args.title
@@ -318,7 +321,7 @@ def main():
     if not results:
         print("No platforms were uploaded to.")
         print("Check social_config.json to enable platforms and accounts.")
-        sys.exit(0)
+        sys.exit(1)
 
     for r in results:
         status = r["status"].upper()

@@ -33,6 +33,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Validate required secrets
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
+        run: |
+          fail=0
+          [ -z "$SA_JSON" ]    && echo "::error::GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON not set" && fail=1
+          [ -z "$FOLDER_ID" ]  && echo "::error::GOOGLE_DRIVE_FOLDER_ID not set" && fail=1
+          [ -z "$PENDING_ID" ] && echo "::error::GOOGLE_DRIVE_PENDING_ID not set" && fail=1
+          [ $fail -eq 1 ] && exit 1
+          echo "All required secrets present"
+
       - name: Write credentials files
         env:
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}

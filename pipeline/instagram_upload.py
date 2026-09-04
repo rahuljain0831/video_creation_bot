@@ -90,7 +90,12 @@ def _load_credentials(creds_path: Path) -> dict:
     # Auto-refresh if token expires within 7 days
     expires_at = data.get("expires_at")
     if expires_at:
-        exp_dt = datetime.fromisoformat(expires_at)
+        try:
+            exp_dt = datetime.fromisoformat(expires_at)
+        except (ValueError, TypeError):
+            log.warning("Malformed expires_at=%r — treating as expired", expires_at)
+            data = _refresh_long_lived_token(data, creds_path)
+            return data
         days_left = (exp_dt - datetime.now(timezone.utc)).days
         if days_left < 7:
             log.info("Instagram token expires in %d days — refreshing...", days_left)

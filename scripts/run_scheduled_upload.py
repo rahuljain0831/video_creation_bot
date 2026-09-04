@@ -125,6 +125,12 @@ def process_schedule(manifest, manifest_drive_id, service):
     """Process a single schedule manifest. Returns True on success."""
     from pipeline.drive_storage import download_from_drive, move_drive_file
 
+    _REQUIRED_KEYS = ("schedule_id", "platform", "drive_file_id")
+    missing = [k for k in _REQUIRED_KEYS if k not in manifest]
+    if missing:
+        log.error("Manifest missing required keys %s — skipping", missing)
+        return False
+
     schedule_id = manifest["schedule_id"]
     platform = manifest["platform"]
     drive_file_id = manifest["drive_file_id"]
@@ -273,8 +279,8 @@ def main():
                 success = process_schedule(data, f["id"], service)
                 sys.exit(0 if success else 1)
 
-        log.error("No manifest found for schedule_id=%d", schedule_id)
-        sys.exit(1)
+        log.warning("No manifest found for schedule_id=%d — likely processed by concurrent run", schedule_id)
+        sys.exit(0)
 
     else:
         # Poll mode: find and process all due uploads
