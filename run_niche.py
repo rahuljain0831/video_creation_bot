@@ -510,10 +510,11 @@ def main() -> None:
                     target_ist += timedelta(days=1)
                 force_time = (target_ist - ist_offset).replace(tzinfo=timezone.utc)
                 log.info("Forcing upload time: %s IST = %s UTC", args.schedule_time, force_time.strftime("%Y-%m-%d %H:%M"))
-            for platform in ["youtube", "instagram", "facebook"]:
+            from pipeline.scheduler import _PLATFORMS
+            for platform in _PLATFORMS:
                 schedule_video(video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
                                force_platform=platform, force_time=force_time)
-            log.info("Scheduled on all 3 platforms. Telegram confirmation after each GH Actions run.")
+            log.info("Scheduled on %s. Telegram confirmation after each GH Actions run.", _PLATFORMS)
         else:
             log.info("[5/5] Sending to Telegram...")
             caption = (
