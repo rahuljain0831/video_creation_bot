@@ -22,6 +22,11 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 log = logging.getLogger(__name__)
 
+# SA has no storage quota of its own (can't own files in a personal Drive), so it
+# only ever reads/moves files the OAuth identity created — that needs the broad
+# `drive` scope, since `drive.file` only sees files the SA itself created, even
+# when the folder is explicitly shared with it as a writer.
+_SA_SCOPES = ["https://www.googleapis.com/auth/drive"]
 _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _ROOT_FOLDER_NAME = "video-uploads"
 _TOKEN_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "drive_token.json")
@@ -67,7 +72,7 @@ def _build_service():
         creds_path = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON")
         if not creds_path:
             raise ValueError("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON env var not set.")
-        creds = SACredentials.from_service_account_file(creds_path, scopes=_SCOPES)
+        creds = SACredentials.from_service_account_file(creds_path, scopes=_SA_SCOPES)
         _service_cache = build("drive", "v3", credentials=creds)
         return _service_cache
 
