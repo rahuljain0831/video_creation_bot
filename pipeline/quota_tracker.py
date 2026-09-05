@@ -156,17 +156,28 @@ def check_and_log_quota(
         return True, ""
 
     else:
-        # Post-call: increment counter, store error_code
+        # Post-call: increment counter, store error_code.
+        # On 429/402 (credit exhaustion), pin units_used to limit so provider
+        # is skipped on all subsequent checks until the next quota reset.
+        exhausted = error_code in (429, 402)
+        units_for_insert = limit if exhausted else 1
         conn.execute(
             """INSERT INTO quota_usage (provider, date, units_used, unit_limit, last_error_code)
-               VALUES (?, ?, 1, ?, ?)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(provider, date) DO UPDATE SET
-                   units_used      = units_used + 1,
+                   units_used      = CASE WHEN excluded.last_error_code IN (429, 402)
+                                     THEN excluded.unit_limit
+                                     ELSE units_used + 1 END,
                    unit_limit      = excluded.unit_limit,
                    last_error_code = excluded.last_error_code""",
-            (provider, today, limit, error_code),
+            (provider, today, units_for_insert, limit, error_code),
         )
         conn.commit()
+        if exhausted:
+            log.warning(
+                "quota_tracker: %s exhausted (HTTP %d) — pinned to limit %d until reset",
+                provider, error_code, limit,
+            )
 
         if success:
             return True, ""

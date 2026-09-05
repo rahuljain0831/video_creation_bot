@@ -352,6 +352,43 @@ def schedule_video(
     conn.commit()
     schedule_id = cur.lastrowid
 
+    # Write the initial manifest JSON to Drive pending/ so run_scheduled_upload.py can find it.
+    # _write_retry_manifest() handles subsequent retries; this covers the first attempt.
+    try:
+        import json
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from pipeline.drive_storage import upload_to_drive as _upload_manifest
+        _title = "Untitled"
+        _row = conn.execute("SELECT file_path FROM videos WHERE id=?", (video_id,)).fetchone()
+        if _row and _row[0]:
+            _slug = Path(_row[0]).stem
+            _script_path = Path("output/scripts") / f"{_slug}.json"
+            if _script_path.exists():
+                _title = json.loads(_script_path.read_text()).get("story_title", _slug)
+            else:
+                _title = _slug
+        _manifest = {
+            "schedule_id": schedule_id,
+            "platform": platform,
+            "drive_file_id": drive_file_id,
+            "scheduled_at": scheduled_at_str,
+            "niche_id": niche_id,
+            "title": _title,
+            "caption": "",
+            "hashtags": [],
+            "retry_count": 0,
+        }
+        _tmp_dir = tempfile.mkdtemp()
+        _tmp = Path(_tmp_dir) / f"{schedule_id}_schedule.json"
+        _tmp.write_text(json.dumps(_manifest))
+        _upload_manifest(_tmp, folder_name="pending")
+        shutil.rmtree(_tmp_dir, ignore_errors=True)
+        logger.info("Manifest uploaded: %s (title=%s)", _tmp.name, _title)
+    except Exception as _e:
+        logger.error("Failed to upload schedule manifest: %s", _e)
+
     cronjob_id = create_upload_job(schedule_id, scheduled_at, repo_owner, repo_name)
 
     conn.execute(

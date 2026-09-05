@@ -142,14 +142,17 @@ def _schedule_approved_video(video_id: int, conn: sqlite3.Connection) -> dict | 
         if script_path.exists():
             drive_manifest_id = upload_to_drive(script_path, folder_name="pending")
 
-        schedule_info = schedule_video(
-            video_id=video_id,
-            niche_id=niche_id,
-            drive_file_id=drive_file_id,
-            drive_manifest_id=drive_manifest_id,
-            conn=conn,
-        )
-        log.info("Scheduled video_id=%d: %s", video_id, schedule_info)
+        for platform in ["youtube", "instagram", "facebook"]:
+            schedule_video(
+                video_id=video_id,
+                niche_id=niche_id,
+                drive_file_id=drive_file_id,
+                drive_manifest_id=drive_manifest_id,
+                conn=conn,
+                force_platform=platform,
+            )
+        schedule_info = {"video_id": video_id, "platforms": ["youtube", "instagram", "facebook"]}
+        log.info("Scheduled video_id=%d on all 3 platforms", video_id)
         return schedule_info
 
     except Exception as e:

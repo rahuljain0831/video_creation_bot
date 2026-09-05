@@ -270,6 +270,8 @@ def main() -> None:
                         help="Stop after script generation (no images, no video)")
     parser.add_argument("--no-telegram", action="store_true",
                         help="Skip Telegram send (video still assembled)")
+    parser.add_argument("--auto-approve", action="store_true",
+                        help="Skip Telegram review, upload to Drive and schedule immediately")
     parser.add_argument("--myth-type", default=None,
                         choices=["hindu", "norse", "egypt", "greek"],
                         help="Mythology sub-type (only for mythology niche)")
@@ -485,6 +487,20 @@ def main() -> None:
         if args.no_telegram:
             log.info("[5/5] --no-telegram: skipping.")
             log.info("Final video: %s", output_path)
+        elif args.auto_approve:
+            log.info("[5/5] --auto-approve: uploading to Drive + scheduling all platforms...")
+            conn.execute("UPDATE videos SET status='approved' WHERE id=?", (video_id,))
+            conn.commit()
+            from pipeline.drive_storage import upload_to_drive
+            from pipeline.scheduler import schedule_video
+            drive_file_id = upload_to_drive(output_path, folder_name="pending")
+            slug = Path(output_path).stem
+            script_path = Path(cfg.paths.get("scripts", "output/scripts")) / f"{slug}.json"
+            drive_manifest_id = upload_to_drive(script_path, folder_name="pending") if script_path.exists() else ""
+            for platform in ["youtube", "instagram", "facebook"]:
+                schedule_video(video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
+                               force_platform=platform)
+            log.info("Scheduled on all 3 platforms. Telegram confirmation after each GH Actions run.")
         else:
             log.info("[5/5] Sending to Telegram...")
             caption = (

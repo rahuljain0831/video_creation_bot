@@ -131,7 +131,10 @@
       "horror_audio": {
         "enabled": true,
         "bed": null,
-        "bed_pool": ["dirge", "musicbox"],
+        "bed_pool": [
+          "dirge",
+          "musicbox"
+        ],
         "ambience_volume": 0.36,
         "stings": false,
         "sting_volume": 0.85,
@@ -191,6 +194,12 @@
         "rate": "+0%",
         "volume": "+0%",
         "pitch": "+0Hz"
+      },
+      "caption_style": {
+        "fontsize": 10,
+        "alpha": 0.0,
+        "margin_bottom_percent": 5,
+        "chunk_size": 4
       }
     },
     {
@@ -323,7 +332,7 @@
     "quality_gate": {
       "_comment": "Inline vision-model quality check. Rejects images scoring below threshold and retries. Needs Ollama + qwen2.5vl:3b (same as image_critic). Adds ~15s per scene per attempt.",
       "enabled": false,
-      "threshold": 0.40,
+      "threshold": 0.4,
       "log_scores": true
     }
   },

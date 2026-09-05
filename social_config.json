@@ -6,7 +6,7 @@
       "api_version": "v3"
     },
     "instagram": {
-      "enabled": false,
+      "enabled": true,
       "daily_upload_limit": 25,
       "api_version": "graph_v21"
     },
