@@ -311,6 +311,7 @@ def schedule_video(
     conn,
     *,
     force_platform: str | None = None,
+    force_time: datetime | None = None,
 ) -> dict:
     """
     Full scheduling flow for a video:
@@ -335,9 +336,12 @@ def schedule_video(
         platform = force_platform
     else:
         platform = get_next_platform(niche_id, conn)
-    scheduled_at = pick_optimal_time(niche_id, platform, conn)
+    if force_time is not None:
+        scheduled_at = force_time if force_time.tzinfo else force_time.replace(tzinfo=timezone.utc)
+    else:
+        scheduled_at = pick_optimal_time(niche_id, platform, conn)
     if scheduled_at <= datetime.now(timezone.utc):
-        logger.warning("pick_optimal_time returned past time %s — pushing to tomorrow", scheduled_at)
+        logger.warning("Scheduled time %s is in the past — pushing to tomorrow", scheduled_at)
         scheduled_at = scheduled_at + timedelta(days=1)
     caption_variant = random.choice(["A", "B"])
 
