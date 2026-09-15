@@ -31,11 +31,16 @@ _PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "pinterest", "linked
 
 _PLATFORM_SPECS = {
     "youtube":   "SEO-optimized description 200-300 chars, exactly 15 hashtags (YouTube ignores all if more than 15) — mix broad and niche tags",
-    "instagram": "casual/engaging 100-150 chars, exactly 30 hashtags (platform maximum) — mix viral, niche, and topic-specific tags for maximum reach",
+    "instagram": "casual/engaging 100-150 chars, exactly 29 hashtags (platform cap is 30 — stay one under) — mix viral, niche, and topic-specific tags for maximum reach",
     "facebook":  "conversational 150-200 chars, 10-15 hashtags — mix trending and topic tags",
     "tiktok":    "punchy/trend-aware 80-150 chars, 20 hashtags — prioritize trending and FYP tags",
     "pinterest": "descriptive/searchable 150-200 chars, 25-30 hashtags — use keyword-rich and discovery tags",
     "linkedin":  "professional/educational tone 200-300 chars, exactly 5 hashtags (LinkedIn algo penalises more) — use professional and industry tags",
+}
+
+_TARGET_HASHTAG_COUNT = {
+    "youtube": 15, "instagram": 29, "facebook": 15,
+    "tiktok": 20, "pinterest": 30, "linkedin": 5,
 }
 
 _EMOJI = {
@@ -150,6 +155,23 @@ Respond with ONLY valid JSON, no markdown fences:
             for tag in platform_bank:
                 if tag.lower() not in existing:
                     hashtags.append(tag)
+                    existing.add(tag.lower())
+
+        # The LLM regularly under-delivers on hashtag count. Pad from the
+        # rest of the niche bank (base + this platform) before falling back
+        # to whatever the LLM gave us.
+        target = _TARGET_HASHTAG_COUNT.get(platform)
+        if target and len(hashtags) < target:
+            existing = set(h.lower() for h in hashtags)
+            pool = niche_bank.get("base", []) + platform_bank
+            for tag in pool:
+                if len(hashtags) >= target:
+                    break
+                if tag.lower() not in existing:
+                    hashtags.append(tag)
+                    existing.add(tag.lower())
+        if target and len(hashtags) > target:
+            hashtags = hashtags[:target]
 
         if caption:
             result[platform] = {"caption": caption, "hashtags": hashtags}

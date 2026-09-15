@@ -31,8 +31,6 @@ def main():
     print("\n1. Environment Variables")
     env_checks = [
         ("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", True),
-        ("CRONJOB_API_KEY", True),
-        ("GITHUB_DISPATCH_TOKEN", True),
         ("TELEGRAM_BOT_TOKEN", True),
         ("TELEGRAM_CHAT_ID", True),
         ("INSTAGRAM_ACCESS_TOKEN", False),
@@ -58,31 +56,8 @@ def main():
         print(f"  Credentials file: MISSING ({creds_path})")
         errors.append("Drive credentials file not found")
 
-    # 3. cron-job.org API
-    print("\n3. cron-job.org API")
-    api_key = os.getenv("CRONJOB_API_KEY", "")
-    if api_key:
-        try:
-            import requests
-            resp = requests.get(
-                "https://api.cron-job.org/jobs",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                jobs = resp.json().get("jobs", [])
-                print(f"  API: OK ({len(jobs)} existing jobs)")
-            else:
-                print(f"  API: FAILED (status {resp.status_code})")
-                errors.append(f"cron-job.org API returned {resp.status_code}")
-        except Exception as e:
-            print(f"  API: FAILED -- {e}")
-            errors.append(f"cron-job.org API error: {e}")
-    else:
-        print("  API: SKIPPED (no key)")
-
     # 4. Database tables
-    print("\n4. Database Tables")
+    print("\n3. Database Tables")
     settings = json.loads((ROOT / "settings.json").read_text())
     db_path = ROOT / settings["paths"]["db"]
     if db_path.exists():
@@ -102,7 +77,7 @@ def main():
         errors.append("Database not found")
 
     # 5. Settings config
-    print("\n5. Scheduler Config")
+    print("\n4. Scheduler Config")
     scheduler_cfg = settings.get("scheduler", {})
     if scheduler_cfg.get("enabled"):
         print("  scheduler.enabled: OK")

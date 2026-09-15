@@ -7,37 +7,37 @@
     "tiktok": ["#mythologytok", "#learnontiktok", "#storytime", "#fyp"]
   },
   "scary_stories": {
-    "base": ["#scarystories", "#horror", "#creepy", "#paranormal", "#scary", "#darkstories", "#nightmares", "#haunted"],
+    "base": ["#scarystories", "#horror", "#creepy", "#paranormal", "#scary", "#darkstories", "#nightmares", "#haunted", "#fyp", "#foryou", "#viral", "#creepypasta", "#spookyseason", "#urbanlegend", "#chillingstories", "#eerie", "#cursed", "#darknarrative"],
     "youtube": ["#shorts", "#horrortok", "#scaryshorts"],
-    "instagram": ["#horrorstories", "#creepypasta", "#scaryreels"],
+    "instagram": ["#horrorstories", "#creepypasta", "#scaryreels", "#ghoststory", "#hauntedhouse", "#spookyvibes", "#nightmarefuel", "#horrortok"],
     "facebook": ["#horrorstories", "#paranormalstories"],
     "tiktok": ["#horrortok", "#scarytok", "#fyp", "#creepystory"]
   },
   "heists": {
-    "base": ["#heist", "#crime", "#truecrime", "#robbery", "#crimestory", "#thriller", "#mastermind", "#criminalminds"],
+    "base": ["#heist", "#crime", "#truecrime", "#robbery", "#crimestory", "#thriller", "#mastermind", "#criminalminds", "#truecrimecommunity", "#truecrimepodcast", "#crimejunkie", "#unsolvedmysteries", "#serialkillers", "#murderino", "#truecrimefan", "#podcastclip"],
     "youtube": ["#shorts", "#truecrimeshorts", "#heistmovies"],
-    "instagram": ["#truecrimeaddict", "#heistmovie", "#crimereels"],
+    "instagram": ["#truecrimeaddict", "#heistmovie", "#crimereels", "#truecrimeobsessed", "#truecrimejunkie", "#crimestory"],
     "facebook": ["#truecrimestories", "#crimefacts"],
     "tiktok": ["#crimetok", "#truecrime", "#fyp", "#storytime"]
   },
   "space_science": {
-    "base": ["#space", "#science", "#universe", "#cosmos", "#astronomy", "#nasa", "#astrophysics", "#planets"],
+    "base": ["#space", "#science", "#universe", "#cosmos", "#astronomy", "#nasa", "#astrophysics", "#planets", "#spacex", "#blackhole", "#cosmology", "#spacephotography", "#astronauts", "#galaxy", "#telescope"],
     "youtube": ["#shorts", "#spacefacts", "#scienceshorts"],
-    "instagram": ["#spacelover", "#cosmosreels", "#sciencefacts"],
+    "instagram": ["#spacelover", "#cosmosreels", "#sciencefacts", "#astrophysics", "#spaceexploration", "#astronomyfacts"],
     "facebook": ["#spacescience", "#universefacts"],
     "tiktok": ["#spacetok", "#sciencetok", "#fyp", "#learnontiktok"]
   },
   "ai_tech_tools": {
-    "base": ["#ai", "#tech", "#artificialintelligence", "#technology", "#machinelearning", "#coding", "#innovation", "#tools"],
+    "base": ["#ai", "#tech", "#artificialintelligence", "#technology", "#machinelearning", "#coding", "#innovation", "#tools", "#chatgpt", "#aiart", "#datascience", "#generativeart", "#midjourney", "#aitools", "#futuretech"],
     "youtube": ["#shorts", "#techshorts", "#aitools"],
-    "instagram": ["#techreels", "#aitips", "#toolsofthetrade"],
+    "instagram": ["#techreels", "#aitips", "#toolsofthetrade", "#aiartcommunity", "#artificialintelligence", "#innovation"],
     "facebook": ["#techtrends", "#aiupdates"],
     "tiktok": ["#techtok", "#aitok", "#fyp", "#techtools"]
   },
   "finance_facts": {
-    "base": ["#finance", "#money", "#investing", "#personalfinance", "#wealth", "#financialliteracy", "#stocks", "#economy"],
+    "base": ["#finance", "#money", "#investing", "#personalfinance", "#wealth", "#financialliteracy", "#stocks", "#economy", "#financialfreedom", "#fintech", "#investingtips", "#stockmarket", "#trading", "#cryptocurrency", "#moneytok", "#wealthbuilding"],
     "youtube": ["#shorts", "#financetips", "#moneyshorts"],
-    "instagram": ["#financereels", "#moneytips", "#investingtips"],
+    "instagram": ["#financereels", "#moneytips", "#investingtips", "#financialfreedom", "#stockmarket", "#personalfinance"],
     "facebook": ["#financialeducation", "#moneyfacts"],
     "tiktok": ["#fintok", "#moneytok", "#fyp", "#personalfinance"]
   }

@@ -64,7 +64,6 @@ _DDL_MIGRATIONS = [
     niche_id        TEXT NOT NULL,
     scheduled_at    DATETIME NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
-    cronjob_id      TEXT,
     drive_file_id   TEXT,
     engagement_views  INTEGER,
     engagement_likes  INTEGER,

@@ -2,7 +2,6 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -129,67 +128,3 @@ def test_pick_optimal_time_avoids_conflicts(monkeypatch):
     diff = abs((result - blocked_dt).total_seconds() / 60)
     assert diff >= 30, f"Got slot {result} too close to blocked {blocked_dt}"
 
-
-# ---------------------------------------------------------------------------
-# 5. create_upload_job — calls cron-job.org API and returns job ID
-# ---------------------------------------------------------------------------
-
-def test_create_upload_job_calls_cronjob_api(monkeypatch):
-    """Mock requests.put — verify job ID is returned."""
-    import pipeline.scheduler as sch
-
-    scheduled_at = datetime(2026, 9, 1, 14, 30, 0)
-
-    mock_response = MagicMock()
-    mock_response.ok = True
-    mock_response.json.return_value = {"jobId": 99999}
-
-    monkeypatch.setenv("CRONJOB_API_KEY", "test-api-key")
-    monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "test-github-token")
-
-    with patch("pipeline.scheduler.requests.put", return_value=mock_response) as mock_put:
-        job_id = sch.create_upload_job(
-            schedule_id=42,
-            scheduled_at=scheduled_at,
-            repo_owner="test-owner",
-            repo_name="test-repo",
-        )
-
-    assert job_id == "99999"
-    mock_put.assert_called_once()
-
-    # Verify the URL
-    call_args = mock_put.call_args
-    assert call_args[0][0] == "https://api.cron-job.org/jobs"
-
-    # Verify Authorization header contains API key
-    headers = call_args[1]["headers"]
-    assert "test-api-key" in headers["Authorization"]
-
-    # Verify schedule payload
-    payload = call_args[1]["json"]
-    job = payload["job"]
-    assert job["schedule"]["hours"] == [14]
-    assert job["schedule"]["minutes"] == [30]
-    assert "scheduled-upload" in job["extendedData"]["body"]
-    assert "42" in job["extendedData"]["body"]  # schedule_id in payload
-
-
-# ---------------------------------------------------------------------------
-# Extra: delete_upload_job does not raise on failure
-# ---------------------------------------------------------------------------
-
-def test_delete_upload_job_no_raise_on_failure(monkeypatch):
-    """delete_upload_job should log a warning but never raise."""
-    import pipeline.scheduler as sch
-
-    monkeypatch.setenv("CRONJOB_API_KEY", "test-api-key")
-
-    mock_response = MagicMock()
-    mock_response.ok = False
-    mock_response.status_code = 404
-    mock_response.text = "Not Found"
-
-    with patch("pipeline.scheduler.requests.delete", return_value=mock_response):
-        # Should not raise
-        sch.delete_upload_job("nonexistent-job")

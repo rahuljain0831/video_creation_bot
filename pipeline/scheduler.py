@@ -1,21 +1,15 @@
 """
-pipeline/scheduler.py — Platform rotation, time selection, and cron-job.org scheduling.
+pipeline/scheduler.py — Platform rotation, time selection, and upload_schedule bookkeeping.
 
 Provides:
     get_next_platform(niche_id, conn) -> str
     pick_optimal_time(niche_id, platform, conn) -> datetime
-    create_upload_job(schedule_id, scheduled_at, repo_owner, repo_name) -> str
-    delete_upload_job(cronjob_id) -> None
     schedule_video(video_id, niche_id, drive_file_id, drive_manifest_id, conn) -> dict
 """
 
 import logging
-import os
 import random
-import time
 from datetime import datetime, timedelta, timezone
-
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -193,116 +187,6 @@ def pick_optimal_time(
     return fallback
 
 
-def create_upload_job(
-    schedule_id: int,
-    scheduled_at: datetime,
-    repo_owner: str,
-    repo_name: str,
-) -> str:
-    """
-    Register a one-time cron job with cron-job.org to trigger a GitHub
-    repository_dispatch event at scheduled_at.
-
-    Returns the cron-job.org job ID string.
-    Raises RuntimeError if the API call fails.
-    """
-    api_key = os.environ.get("CRONJOB_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("CRONJOB_API_KEY env var not set — cannot create upload job")
-    github_token = os.environ.get("GITHUB_DISPATCH_TOKEN", "")
-    if not github_token:
-        raise RuntimeError("GITHUB_DISPATCH_TOKEN env var not set — cannot create upload job")
-
-    schedule = {
-        "timezone": "UTC",
-        "hours": [scheduled_at.hour],
-        "mdays": [scheduled_at.day],
-        "months": [scheduled_at.month],
-        "wdays": [-1],
-        "minutes": [scheduled_at.minute],
-    }
-
-    body = {
-        "job": {
-            "url": f"https://api.github.com/repos/{repo_owner}/{repo_name}/dispatches",
-            "enabled": True,
-            "saveResponses": False,
-            "schedule": schedule,
-            "requestMethod": 1,  # POST
-            "extendedData": {
-                # A map, not a list of {name, value} pairs. The list form is
-                # accepted by the request parser and then rejected deeper in,
-                # so every call came back 500 with an empty body — which read
-                # like an outage rather than a malformed payload.
-                "headers": {
-                    "Authorization": f"Bearer {github_token}",
-                    "Accept": "application/vnd.github.v3+json",
-                    "Content-Type": "application/json",
-                },
-                "body": (
-                    '{"event_type":"scheduled-upload",'
-                    f'"client_payload":{{"schedule_id":{schedule_id}}}}}'
-                ),
-            },
-        }
-    }
-
-    # Scheduling a batch means dozens of these back to back, and the API starts
-    # answering 429 partway through. Retry the transient codes rather than
-    # dropping the trigger for that upload.
-    resp = None
-    for attempt in range(1, 5):
-        resp = requests.put(
-            "https://api.cron-job.org/jobs",
-            json=body,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=15,
-        )
-        if resp.ok or resp.status_code not in (429, 500, 502, 503, 504):
-            break
-        if attempt < 4:
-            pause = 5 * attempt
-            logger.warning(
-                "cron-job.org %d for schedule_id=%d — retrying in %ds",
-                resp.status_code, schedule_id, pause,
-            )
-            time.sleep(pause)
-
-    if not resp.ok:
-        raise RuntimeError(
-            f"cron-job.org API error {resp.status_code}: {resp.text[:200]}"
-        )
-
-    data = resp.json()
-    job_id = str(data.get("jobId", data.get("job", {}).get("jobId", "")))
-    if not job_id:
-        raise RuntimeError(f"cron-job.org returned empty job ID: {data}")
-    return job_id
-
-
-def delete_upload_job(cronjob_id: str) -> None:
-    """
-    Delete a cron-job.org job by ID.
-    Logs a warning on failure but does not raise.
-    """
-    api_key = os.environ.get("CRONJOB_API_KEY", "")
-    try:
-        resp = requests.delete(
-            f"https://api.cron-job.org/jobs/{cronjob_id}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=15,
-        )
-        if not resp.ok:
-            logger.warning(
-                "Failed to delete cron-job.org job %s: %s %s",
-                cronjob_id,
-                resp.status_code,
-                resp.text[:200],
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Exception deleting cron-job.org job %s: %s", cronjob_id, exc)
-
-
 def schedule_video(
     video_id: int,
     niche_id: str,
@@ -318,18 +202,13 @@ def schedule_video(
     1. Rotate platform (or use force_platform to target a specific one).
     2. Pick optimal upload time.
     3. Insert into upload_schedule.
-    4. Register cron-job.org job.
-    5. Update upload_schedule with cronjob_id.
-    6. Return summary dict.
+    4. Write the schedule manifest to Drive pending/ (GitHub Actions cron polls for it).
+    5. Return summary dict.
 
     force_platform: when set, skip round-robin and schedule for exactly this
     platform ("youtube" | "instagram" | "facebook"). Existing callers are
     unaffected (they pass nothing, so round-robin behaviour is unchanged).
     """
-    cfg = _get_scheduler_config()
-    github_repo: str = cfg.get("github_repo", "your-username/video-creation-agent")
-    repo_owner, repo_name = github_repo.split("/", 1)
-
     if force_platform is not None:
         if force_platform not in _PLATFORMS:
             raise ValueError(f"force_platform must be one of {_PLATFORMS}, got {force_platform!r}")
@@ -370,7 +249,8 @@ def schedule_video(
             _slug = Path(_row[0]).stem
             _script_path = Path("output/scripts") / f"{_slug}.json"
             if _script_path.exists():
-                _title = json.loads(_script_path.read_text()).get("story_title", _slug)
+                _script_data = json.loads(_script_path.read_text(encoding="utf-8"))
+                _title = _script_data.get("script", {}).get("story_title", _slug)
             else:
                 _title = _slug
         _manifest = {
@@ -393,14 +273,6 @@ def schedule_video(
     except Exception as _e:
         logger.error("Failed to upload schedule manifest: %s", _e)
 
-    cronjob_id = create_upload_job(schedule_id, scheduled_at, repo_owner, repo_name)
-
-    conn.execute(
-        "UPDATE upload_schedule SET cronjob_id=? WHERE id=?",
-        (cronjob_id, schedule_id),
-    )
-    conn.commit()
-
     # Format IST display time
     ist_dt = scheduled_at + _IST_OFFSET
     scheduled_at_ist = ist_dt.strftime("%Y-%m-%d %H:%M IST")
@@ -410,6 +282,5 @@ def schedule_video(
         "platform": platform,
         "scheduled_at": scheduled_at,
         "scheduled_at_ist": scheduled_at_ist,
-        "cronjob_id": cronjob_id,
         "caption_variant": caption_variant,
     }

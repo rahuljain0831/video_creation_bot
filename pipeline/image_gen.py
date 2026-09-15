@@ -222,7 +222,7 @@ def _gen_pollinations(provider, prompt, negative, width, height, timeout, seed) 
     url = f"https://image.pollinations.ai/prompt/{quote(prompt, safe='')}"
     params = {
         "width": width, "height": height, "model": model,
-        "nologo": "true", "seed": seed,
+        "nologo": "true", "seed": seed, "safe": "true",
     }
     headers = {}
     if provider["api_key"]:
@@ -550,6 +550,18 @@ def generate_image(
                     output_path.write_bytes(data)
                     log.info("Image gen success: %s (%d bytes, provider=%s)",
                              output_path, len(data), provider["name"])
+
+                    # Mandatory safety check, always on regardless of quality_gate.
+                    from pipeline.image_critic import nsfw_flagged
+                    if nsfw_flagged(str(output_path), cfg):
+                        log.error(
+                            "NSFW content flagged: scene=%d provider=%s — rejecting, "
+                            "retrying with another provider/attempt",
+                            scene_index, provider["name"],
+                        )
+                        output_path.unlink(missing_ok=True)
+                        retryable_failure = True
+                        continue
 
                     if qg_enabled:
                         from pipeline.image_critic import score_image_inline

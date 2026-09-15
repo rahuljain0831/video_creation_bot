@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import sqlite3
+from pathlib import Path
 
 # Camera framings image_gen knows how to prompt for. Imported rather than
 # redeclared so the two lists cannot drift.
@@ -264,6 +265,49 @@ def _get_used_titles(conn: sqlite3.Connection, niche_id: str) -> list[str]:
     return [r[0] for r in rows if r[0]]
 
 
+_TOPIC_BANKS_PATH = Path(__file__).parent.parent / "topic_banks.json"
+_topic_banks_cache: dict | None = None
+
+
+def _load_topic_banks() -> dict:
+    global _topic_banks_cache
+    if _topic_banks_cache is None:
+        _topic_banks_cache = (
+            json.loads(_TOPIC_BANKS_PATH.read_text(encoding="utf-8"))
+            if _TOPIC_BANKS_PATH.exists()
+            else {}
+        )
+    return _topic_banks_cache
+
+
+def _get_used_topics(conn: sqlite3.Connection, niche_id: str) -> list[str]:
+    """Topics already assigned for this niche, oldest first (for rotation)."""
+    rows = conn.execute(
+        "SELECT chosen_option FROM decisions WHERE decision_point='topic_category' "
+        "AND reasoning LIKE ? ORDER BY id",
+        (f"%niche={niche_id}%",),
+    ).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+def _pick_topic(conn: sqlite3.Connection, niche_id: str) -> str | None:
+    """
+    Pick the topic this niche's bank hasn't used in the longest time.
+
+    Cycles through the whole bank before any topic repeats, so a run of N
+    videos (N = bank size) covers N distinct angles instead of the LLM
+    re-picking whatever "engaging, original topic" it defaults to.
+    """
+    bank = _load_topic_banks().get(niche_id, [])
+    if not bank:
+        return None
+    used = _get_used_topics(conn, niche_id)
+    for topic in bank:
+        if topic not in used[-len(bank):]:
+            return topic
+    return bank[0]
+
+
 def generate_script(
     niche: dict,
     story_seed: str,
@@ -351,10 +395,23 @@ def generate_script(
         else ""
     )
 
+    # Force topic variety when the caller left the choice to the LLM — a
+    # dedup on title alone still lets the same plot resurface under a new
+    # title. An explicit story_seed is a deliberate user choice, so it's
+    # left alone.
+    topic = None if story_seed.strip() else _pick_topic(conn, niche_id)
+
     story_directive = (
         f'Base the content on: "{story_seed}"'
         if story_seed.strip()
         else f"Choose an engaging, original {niche_label} topic."
+        + (
+            f' This video\'s angle: "{topic}". Build an original, specific story '
+            "from this angle — do not reuse a previous plot even if the angle "
+            "sounds similar."
+            if topic
+            else ""
+        )
     ) + avoid_block
 
     system = (
@@ -513,6 +570,14 @@ Respond with exactly this JSON structure:
         f"niche={niche_id} seed={story_seed[:60] or 'random'} scenes_requested={min_scenes}-{max_scenes}",
         model_used,
     )
+    if topic:
+        _log_decision(
+            conn, video_id,
+            "topic_category",
+            topic,
+            f"niche={niche_id} title={story_title[:60]}",
+            model_used,
+        )
 
     # ── Normalise scenes ─────────────────────────────────────────────────────
     scenes = []

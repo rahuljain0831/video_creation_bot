@@ -34,19 +34,33 @@ log = logging.getLogger("batch_mixed")
 
 # 12 topics across the 5 ffmpeg niches. scary_stories is deliberately absent —
 # it renders through Remotion, which is still work in progress.
+# mythology is disabled in settings.json (enabled: false) — do not add it back.
 TOPICS: list[tuple[str, str]] = [
     ("space_science",  "Why neutron stars spin faster than a kitchen blender"),
     ("ai_tech_tools",  "The AI model that folded every known protein in a year"),
     ("finance_facts",  "How compound interest quietly turns small savings into fortunes"),
     ("heists",         "The Antwerp diamond heist that beat ten layers of security"),
-    ("mythology",      "The churning of the ocean of milk and the poison Shiva drank"),
     ("space_science",  "What the James Webb telescope found at the edge of time"),
     ("ai_tech_tools",  "How a voice can be cloned from three seconds of audio"),
     ("finance_facts",  "Why the dollar lost 96 percent of its purchasing power"),
     ("heists",         "The Lufthansa robbery that vanished into thin air"),
-    ("mythology",      "Hanuman leaping across the ocean to find Sita"),
     ("space_science",  "The Great Attractor pulling our galaxy across the void"),
     ("ai_tech_tools",  "The day an AI wrote production code faster than its team"),
+    ("space_science",  "Why time itself slows down near a black hole's edge"),
+    ("space_science",  "The rogue planet wandering the galaxy with no star to orbit"),
+    ("ai_tech_tools",  "How a language model taught itself to play chess from scratch"),
+    ("ai_tech_tools",  "The robot hand that learned to tie a shoelace by trial and error"),
+    ("finance_facts",  "Why the 2008 crash started with a loan nobody checked"),
+    ("finance_facts",  "How inflation quietly steals from savers while nobody notices"),
+    ("finance_facts",  "The Ponzi scheme that fooled Wall Street for twenty years"),
+    ("heists",         "The Isabella Stewart Gardner art theft nobody ever solved"),
+    ("heists",         "The Baker Street vault break-in the police almost missed"),
+    ("heists",         "The Brink's-Mat gold heist that ended in a decade of murders"),
+    ("space_science",  "The star that vanished from the sky without exploding"),
+    ("ai_tech_tools",  "The chatbot that passed as human in a blind test"),
+    ("finance_facts",  "How a single trader lost a 233-year-old bank in a weekend"),
+    ("heists",         "The Hatton Garden vault job pulled off by pensioners"),
+    ("heists",         "The Great Train Robbery and the getaway that fooled Scotland Yard"),
 ]
 
 

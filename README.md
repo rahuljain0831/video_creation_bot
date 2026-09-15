@@ -30,7 +30,7 @@ ffmpeg applies a slow Ken Burns pan/zoom to each image, concatenates them in sce
 The finished video is sent to a Telegram bot. You watch it, tap good/bad. The verdict is saved alongside all generation decisions for later analysis.
 
 **Step 8 — Approved videos are scheduled for upload**
-After approval, the video is uploaded to Google Drive, the next platform is picked (YouTube / Instagram / Facebook, round-robin per niche), an optimal upload time is selected using engagement data, and a cron-job.org trigger fires a GitHub Actions workflow at the scheduled time to publish the video.
+After approval, the video is uploaded to Google Drive, the next platform is picked (YouTube / Instagram / Facebook, round-robin per niche), an optimal upload time is selected using engagement data, and a schedule manifest is written to Drive. A GitHub Actions workflow polls for due manifests and publishes the video at the scheduled time.
 
 **Step 9 — Engagement is tracked**
 A daily GitHub Actions cron fetches view/like counts from platform APIs for recent uploads and updates performance data. After enough samples, the scheduler adapts upload times to maximize engagement.
@@ -85,8 +85,6 @@ python ingest_library.py --folder /path/to/your/images --tradition hindu
 | `HF_API_TOKEN` | HuggingFace image generation |
 | `PIXABAY_API_KEY` | Background chanting audio |
 | `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | Google Drive upload (scheduler) |
-| `CRONJOB_API_KEY` | cron-job.org scheduled triggers |
-| `GITHUB_DISPATCH_TOKEN` | GitHub Actions dispatch (repo scope PAT) |
 | `INSTAGRAM_ACCESS_TOKEN` | Instagram engagement tracking |
 | `FACEBOOK_PAGE_ACCESS_TOKEN` | Facebook engagement tracking |
 
@@ -234,7 +232,7 @@ pipeline/
   scene_timing.py         — per-scene duration from audio length
   quota_tracker.py        — pre/post LLM API call quota checks and daily reset logic
   drive_storage.py        — Google Drive upload and lifecycle management
-  scheduler.py            — upload scheduling and cron-job.org dispatch
+  scheduler.py            — upload scheduling and Drive manifest writes
   engagement_tracker.py   — platform engagement metrics (views/likes)
   social_accounts.py      — social media account config
   social_captions.py      — A/B caption generation for uploads

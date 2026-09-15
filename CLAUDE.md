@@ -260,8 +260,8 @@ optionally provides a story seed, and the pipeline runs end-to-end.
 6. After Telegram approval, `pipeline/scheduler.py` handles Google Drive upload, platform selection
    (round-robin per niche via `platform_rotation` table), optimal time scheduling (adaptive from
    `time_performance` data), and queues the upload in `upload_schedule`. `scheduled-upload.yml`'s
-   own GitHub Actions cron polls that table and fires due uploads directly — cron-job.org is a
-   legacy/backup trigger only, kept for `repository_dispatch` compat.
+   own GitHub Actions cron polls the Drive `pending/` folder for due schedule manifests and fires
+   uploads directly.
 
 **LLM routing (`llm_router.py`):** `call_llm()` walks the cloud providers in `llm_keys.json`
 **top-to-bottom** (that file, not `settings.json`, sets the order — `settings.json.llm_router`
@@ -284,11 +284,11 @@ counted. `format_quota_report()` prints a per-provider used/limit/% block, emitt
 
 **Upload Scheduler (`pipeline/scheduler.py`):** After Telegram approval, uploads video to
 Google Drive, picks next platform (round-robin per niche), selects optimal upload time
-(adaptive based on engagement data, falls back to research-backed defaults), and inserts a
-row into `upload_schedule`. Primary trigger is `scheduled-upload.yml`'s own GitHub Actions
-`schedule: cron` (polls for due rows every few hours, `scripts/run_scheduled_upload.py` with
-no args). A cron-job.org one-time job is still created as a legacy/backup trigger via
-`repository_dispatch`, but is not the primary path.
+(adaptive based on engagement data, falls back to research-backed defaults), inserts a
+row into `upload_schedule`, and writes a `{schedule_id}_schedule.json` manifest to the Drive
+`pending/` folder. Trigger is `scheduled-upload.yml`'s own GitHub Actions `schedule: cron`
+(polls the Drive `pending/` folder for due manifests every few hours,
+`scripts/run_scheduled_upload.py` with no args).
 
 **Engagement Tracker (`pipeline/engagement_tracker.py`):** Daily GitHub Actions cron fetches
 view/like counts from YouTube/Instagram/Facebook APIs for recent uploads, updates
@@ -453,7 +453,7 @@ All API keys go in `.env` (see `.env.example`). `GOOGLE_AI_STUDIO_API_KEY` is us
 Gemini (LLM fallback) and for Gemini Vision during image library ingestion.
 Ollama must be running locally (`http://localhost:11434`) for the local LLM fallback.
 
-Scheduler keys: `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`, `CRONJOB_API_KEY`, `GITHUB_DISPATCH_TOKEN`.
+Scheduler keys: `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`.
 Engagement keys: `INSTAGRAM_ACCESS_TOKEN`, `FACEBOOK_PAGE_ACCESS_TOKEN`.
 Image gen: `PEXELS_API_KEY`, `HF_API_TOKEN`.
 
@@ -496,8 +496,8 @@ pipeline/
   ffmpeg_assembler.py   — Ken Burns + caption burn + audio mix → mp4
   scene_timing.py       — per-scene duration calculation from audio
   quota_tracker.py      — LLM provider quota tracking
-  scheduler.py          — upload scheduling: Drive upload + upload_schedule row (fired by
-                                GitHub Actions cron; cron-job.org kept as legacy backup)
+  scheduler.py          — upload scheduling: Drive upload + upload_schedule row + Drive
+                                manifest (polled and fired by GitHub Actions cron)
   engagement_tracker.py — fetch engagement metrics and update time_performance
   drive_storage.py      — Google Drive service account upload/cleanup
   social_accounts.py    — social media account configuration

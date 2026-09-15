@@ -12,9 +12,6 @@ on:
       schedule_id:
         description: 'Specific schedule_id to process (optional)'
         required: false
-  # Keep repository_dispatch for backwards compat
-  repository_dispatch:
-    types: [scheduled-upload]
 
 jobs:
   upload:
@@ -80,8 +77,7 @@ jobs:
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id || github.event.inputs.schedule_id || '' }}
+          SCHEDULE_ID: ${{ github.event.inputs.schedule_id || '' }}
         run: python scripts/run_scheduled_upload.py ${SCHEDULE_ID:+"$SCHEDULE_ID"}
 
       - name: Notify failure
@@ -90,7 +86,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          SCHEDULE_ID: ${{ github.event.client_payload.schedule_id || github.event.inputs.schedule_id || '' }}
+          SCHEDULE_ID: ${{ github.event.inputs.schedule_id || '' }}
         run: |
           python - <<'EOF'
           import os, json, urllib.request

@@ -66,6 +66,7 @@ _CORRECTIONS = {
     "subject_missed": "the named subject must be the single clear focus of the frame",
     "face_visible":   "face turned fully away from camera, features not visible",
     "hands_visible":  "hands hidden or out of frame",
+    "nudity":         "fully clothed, no nudity, no sexual content",
     "too_dark":       "one clearly lit area, visible detail in the shadows",
     "too_bright":     "low-key, deep shadow, no daylight",
 }
@@ -180,7 +181,8 @@ def _ask_vision(config: dict, b64: str) -> dict:
         "Describe only what is actually visible in this image. Do not guess at "
         "intent.\nAnswer as JSON only, no other text:\n"
         '{"what_it_shows": "<at most 10 words>", '
-        '"face_clearly_visible": true or false, "hands_clearly_visible": true or false}'
+        '"face_clearly_visible": true or false, "hands_clearly_visible": true or false, '
+        '"nudity_or_sexual_content": true or false}'
     )
     try:
         resp = requests.post(
@@ -263,6 +265,9 @@ def critique_image(
                 result.flaws.append("face_visible")
             if verdict.get("hands_clearly_visible") is True:
                 result.flaws.append("hands_visible")
+        # Nudity is checked regardless of human_policy — no niche opts into it.
+        if verdict.get("nudity_or_sexual_content") is True:
+            result.flaws.append("nudity")
 
     result.ok = not result.flaws
 
@@ -271,6 +276,27 @@ def critique_image(
             record_flaw(niche_id, shot, flaw, _CORRECTIONS.get(flaw, ""))
 
     return result
+
+
+def nsfw_flagged(path: str | Path, cfg=None) -> bool:
+    """
+    Mandatory safety check, independent of the optional quality_gate.
+
+    Runs on every generated image regardless of provider or niche. Fails open
+    (returns False) if the local critic is unavailable — same failure mode as
+    the rest of the critic — but that only matters if Ollama itself is down;
+    it does not depend on quality_gate.enabled.
+    """
+    config = _config(cfg)
+    if not config.get("enabled", True):
+        return False
+    try:
+        b64, _ = _encoded(Path(path), int(config["max_width"]))
+        verdict = _ask_vision(config, b64)
+    except Exception as e:
+        log.warning("NSFW check unavailable for %s: %s", path, e)
+        return False
+    return verdict.get("nudity_or_sexual_content") is True
 
 
 def score_image_inline(
@@ -307,6 +333,9 @@ def score_image_inline(
     if c.error:
         # Critic unavailable (Ollama down, unreadable image, etc.) — accept
         return 1.0
+
+    if "nudity" in c.flaws:
+        return 0.0  # hard reject, no threshold negotiates this
 
     score = c.overlap if c.overlap is not None else 1.0
 

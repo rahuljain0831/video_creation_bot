@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import cfg
-from pipeline.scheduler import pick_optimal_time, create_upload_job, _get_scheduler_config
+from pipeline.scheduler import pick_optimal_time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
 log = logging.getLogger(__name__)
@@ -144,24 +144,6 @@ def schedule_on_platform(video_id, niche_id, drive_file_id, platform, conn,
     manifest_drive_id = upload_to_drive(tmp, folder_name="pending")
     log.info("Manifest uploaded: schedule_id=%d drive_id=%s", schedule_id, manifest_drive_id)
 
-    # Register cron-job.org trigger for GitHub Actions dispatch
-    scheduler_cfg = _get_scheduler_config()
-    github_repo = scheduler_cfg.get("github_repo", "")
-    if github_repo:
-        repo_owner, repo_name = github_repo.split("/", 1)
-        try:
-            cronjob_id = create_upload_job(schedule_id, scheduled_at, repo_owner, repo_name)
-            conn.execute(
-                "UPDATE upload_schedule SET cronjob_id=? WHERE id=?",
-                (cronjob_id, schedule_id),
-            )
-            conn.commit()
-            log.info("Cron trigger created: schedule_id=%d cronjob_id=%s", schedule_id, cronjob_id)
-        except Exception as exc:
-            log.error("Failed to create cron trigger for schedule_id=%d: %s", schedule_id, exc)
-    else:
-        log.warning("No github_repo in scheduler config — skipping cron trigger")
-
     scheduled_ist = _ist(scheduled_at)
 
     log.info(
@@ -275,7 +257,7 @@ def main():
     parser.add_argument("--anchor-first", action="store_true",
                         help="Pin video 1 of each day to the anchor time on all 3 platforms")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Print the computed slots. No DB writes, no Drive, no cron jobs.")
+                        help="Print the computed slots. No DB writes, no Drive.")
     args = parser.parse_args()
 
     if not args.video_ids and not args.all_pending:

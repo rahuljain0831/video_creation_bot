@@ -67,7 +67,6 @@ def test_upload_schedule_columns(temp_db):
         "niche_id",
         "scheduled_at",
         "status",
-        "cronjob_id",
         "drive_file_id",
         "engagement_views",
         "engagement_likes",

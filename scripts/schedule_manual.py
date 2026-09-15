@@ -122,10 +122,10 @@ def main() -> None:
     print(f"  Drive ID  : {drive_file_id}")
     print()
     if results:
-        print(f"  {'Platform':<12} {'Scheduled (IST)':<22} Cron Job ID")
-        print(f"  {'-'*12} {'-'*22} {'-'*20}")
+        print(f"  {'Platform':<12} Scheduled (IST)")
+        print(f"  {'-'*12} {'-'*22}")
         for r in results:
-            print(f"  {r['platform']:<12} {r['scheduled_at_ist']:<22} {r['cronjob_id']}")
+            print(f"  {r['platform']:<12} {r['scheduled_at_ist']}")
     else:
         print("  No platforms scheduled.")
     print(f"{'=' * 58}\n")
