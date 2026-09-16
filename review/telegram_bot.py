@@ -1,51 +1,22 @@
 """
-Phase 6 — Telegram review bot.
+Telegram notifications.
 
-Flow:
-  1. Worker calls send_for_review(video_id, file_path, quote_text)
-  2. Bot sends video (no buttons); captions message sent separately with Approve/Reject
-  3. Tap Approve → status='approved'
-  4. Tap Reject → bot edits message to ask for feedback text
-  5. User replies with feedback → if retry_count < 3: run_retry in background thread
-                                  else: permanently_rejected
+No review gate — run_niche.py auto-approves every video (content safety is
+enforced upstream by pipeline/image_critic.py's mandatory nsfw check and each
+niche's image_prompt_rules banning humans/faces/hands outright). This module
+just sends an FYI video message after the fact; nothing waits on it.
 """
 import asyncio
-import html as html_lib
 import logging
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    Application,
-    CallbackQueryHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+from telegram import Bot
 
 from config import cfg
-from feedback.parser import parse_tags
 
 log = logging.getLogger(__name__)
 
-_APPROVE = "approve"
-_REJECT  = "reject"
-
-MAX_RETRIES = 3
-
-# Shared thread pool for pipeline work (retries + future new-video tasks)
-_executor = ThreadPoolExecutor(max_workers=4)
-
-# chat_id → (feedback_id, video_id, retry_count)  — awaiting rejection feedback text
-_pending_retry: dict[int, tuple[int, int, int]] = {}
-
-# chat_id → feedback_id  — awaiting optional tag text after approve
-_pending_text: dict[int, int] = {}
-
-
-# ── Send video for review ─────────────────────────────────────────────────────
 
 def _build_quota_summary_text(conn: sqlite3.Connection) -> str:
     """Build a human-readable quota status line for Telegram captions."""
@@ -102,7 +73,7 @@ def send_for_review(
     quote_text: str,
     conn: sqlite3.Connection | None = None,
 ) -> None:
-    """Sync wrapper — safe to call from the worker."""
+    """Sync wrapper — safe to call from the worker. FYI notification, no gate."""
     if not cfg.TELEGRAM_BOT_TOKEN or not cfg.TELEGRAM_CHAT_ID:
         log.warning("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — skipping send")
         return
@@ -110,268 +81,3 @@ def send_for_review(
         log.error("Video file not found: %s", file_path)
         return
     asyncio.run(_send_video_async(video_id, file_path, quote_text, conn))
-
-
-# ── Scheduler hook ───────────────────────────────────────────────────────────
-
-def _schedule_approved_video(video_id: int, conn: sqlite3.Connection) -> dict | None:
-    """Post-approval: upload to Drive and schedule for social media."""
-    try:
-        row = conn.execute(
-            "SELECT niche_id, file_path FROM videos WHERE id=?", (video_id,)
-        ).fetchone()
-        if not row or not row[1]:
-            log.warning("schedule: video_id=%d has no niche_id or file_path", video_id)
-            return None
-
-        niche_id, file_path = row
-        video_path = Path(file_path)
-        if not video_path.exists():
-            log.warning("schedule: video file not found: %s", file_path)
-            return None
-
-        from pipeline.drive_storage import upload_to_drive
-        from pipeline.scheduler import schedule_video
-
-        drive_file_id = upload_to_drive(video_path, folder_name="pending")
-
-        slug = video_path.stem
-        script_dir = Path(cfg.paths.get("scripts", "output/scripts"))
-        script_path = script_dir / f"{slug}.json"
-        drive_manifest_id = ""
-        if script_path.exists():
-            drive_manifest_id = upload_to_drive(script_path, folder_name="pending")
-
-        for platform in ["youtube", "instagram", "facebook"]:
-            schedule_video(
-                video_id=video_id,
-                niche_id=niche_id,
-                drive_file_id=drive_file_id,
-                drive_manifest_id=drive_manifest_id,
-                conn=conn,
-                force_platform=platform,
-            )
-        schedule_info = {"video_id": video_id, "platforms": ["youtube", "instagram", "facebook"]}
-        log.info("Scheduled video_id=%d on all 3 platforms", video_id)
-        return schedule_info
-
-    except Exception as e:
-        log.error("schedule: failed for video_id=%d: %s", video_id, e)
-        return None
-
-
-# ── Button callback ───────────────────────────────────────────────────────────
-
-async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    action, video_id_str = query.data.split(":", 1)
-    video_id = int(video_id_str)
-    chat_id  = query.message.chat_id
-
-    conn = sqlite3.connect(cfg.paths["db"])
-    conn.execute("PRAGMA journal_mode=WAL")
-
-    if action == _APPROVE:
-        conn.execute("UPDATE videos SET status='approved' WHERE id=?", (video_id,))
-        conn.execute(
-            "INSERT INTO feedback (video_id, rating, source) VALUES (?, 'good', 'manual')",
-            (video_id,),
-        )
-        conn.commit()
-        feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.close()
-
-        _pending_text[chat_id] = feedback_id
-        log.info("video_id=%d approved (feedback_id=%d)", video_id, feedback_id)
-
-        # Schedule for social media upload
-        sched_conn = sqlite3.connect(cfg.paths["db"])
-        sched_conn.execute("PRAGMA journal_mode=WAL")
-        schedule_info = _schedule_approved_video(video_id, sched_conn)
-        sched_conn.close()
-
-        if schedule_info:
-            label = f"✅ Approved | 📅 {schedule_info['platform'].title()} at {schedule_info['scheduled_at_ist']}"
-        else:
-            label = "✅ Approved"
-        suffix = "<i>Reply with any notes (optional)</i>"
-
-    else:
-        # Read current retry_count to show user how many retries remain
-        row = conn.execute(
-            "SELECT retry_count FROM videos WHERE id=?", (video_id,)
-        ).fetchone()
-        retry_count = row[0] if row else 0
-
-        conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
-        conn.execute(
-            "INSERT INTO feedback (video_id, rating, source) VALUES (?, 'bad', 'manual')",
-            (video_id,),
-        )
-        conn.commit()
-        feedback_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.close()
-
-        _pending_retry[chat_id] = (feedback_id, video_id, retry_count)
-        log.info(
-            "video_id=%d rejected (feedback_id=%d retry_count=%d)",
-            video_id, feedback_id, retry_count,
-        )
-
-        retries_left = MAX_RETRIES - retry_count
-        label = "❌ Rejected"
-        suffix = (
-            f"<i>Reply with what needs changing ({retries_left} retr{'y' if retries_left == 1 else 'ies'} left)</i>"
-        )
-
-    try:
-        if query.message.caption is not None:
-            # Media message (video/photo) — edit caption
-            original = html_lib.escape(query.message.caption or "")
-            new_caption = f"{original}\n\n<b>{label}</b>\n{suffix}"
-            if len(new_caption) > 1020:
-                new_caption = original[:800] + f"...\n\n<b>{label}</b>\n{suffix}"
-            await query.edit_message_caption(
-                caption=new_caption,
-                parse_mode="HTML",
-                reply_markup=None,
-            )
-        else:
-            # Plain text message (social captions) — just remove keyboard + reply status
-            await query.edit_message_reply_markup(reply_markup=None)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"video_id={video_id}: <b>{label}</b>\n{suffix}",
-                parse_mode="HTML",
-            )
-    except Exception as e:
-        if "not modified" not in str(e).lower():
-            log.warning("edit_message failed (non-fatal): %s", e)
-
-
-# ── Text reply handler ────────────────────────────────────────────────────────
-
-async def _handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.message.chat_id
-    text    = update.message.text.strip()
-
-    # ── Rejection feedback path (triggers retry) ──────────────────────────────
-    retry_entry = _pending_retry.pop(chat_id, None)
-    if retry_entry is not None:
-        feedback_id, video_id, retry_count = retry_entry
-
-        # Save feedback text
-        conn = sqlite3.connect(cfg.paths["db"])
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "UPDATE feedback SET feedback_text=? WHERE id=?",
-            (text, feedback_id),
-        )
-        conn.commit()
-
-        if retry_count >= MAX_RETRIES:
-            conn.execute(
-                "UPDATE videos SET status='permanently_rejected' WHERE id=?",
-                (video_id,),
-            )
-            conn.commit()
-            conn.close()
-            log.info("video_id=%d permanently rejected after %d retries", video_id, retry_count)
-            await update.message.reply_text(
-                f"Max retries ({MAX_RETRIES}) reached for video {video_id}. "
-                "Marked as permanently rejected."
-            )
-            return
-
-        conn.close()
-
-        # Submit retry to thread pool — non-blocking
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(_executor, _run_retry_safe, video_id, text, chat_id)
-
-        retries_used = retry_count + 1
-        await update.message.reply_text(
-            f"Regenerating video (retry {retries_used}/{MAX_RETRIES}) with your feedback...\n"
-            "New video will arrive shortly."
-        )
-        return
-
-    # ── Approve follow-up notes path ──────────────────────────────────────────
-    feedback_id = _pending_text.pop(chat_id, None)
-    if feedback_id is None:
-        return  # unsolicited message — ignore
-
-    conn = sqlite3.connect(cfg.paths["db"])
-    row  = conn.execute(
-        "SELECT rating FROM feedback WHERE id=?", (feedback_id,)
-    ).fetchone()
-
-    if not row:
-        conn.close()
-        return
-
-    rating = row[0]
-    tags   = parse_tags(text, rating)
-
-    conn.execute(
-        "UPDATE feedback SET feedback_text=?, parsed_tags=? WHERE id=?",
-        (text, __import__("json").dumps(tags) if tags else None, feedback_id),
-    )
-    conn.commit()
-    conn.close()
-
-    log.info("feedback_id=%d text saved, tags=%s", feedback_id, tags)
-    reply = f"Tags: {', '.join(tags)}" if tags else "Saved (no tags extracted)"
-    await update.message.reply_text(reply)
-
-
-# ── Retry wrapper (runs in thread pool) ──────────────────────────────────────
-
-def _run_retry_safe(video_id: int, feedback: str, chat_id: int) -> None:
-    """Run run_retry in a worker thread; notify Telegram on failure."""
-    from pipeline.retry import run_retry
-
-    try:
-        new_id = run_retry(video_id, feedback, cfg)
-        log.info("retry done: original_id=%d new_id=%d", video_id, new_id)
-    except Exception as exc:
-        log.exception("run_retry failed: video_id=%d", video_id)
-        # Notify user of failure — fire-and-forget via new event loop
-        try:
-            async def _notify():
-                from telegram.request import HTTPXRequest
-                async with Bot(
-                    token=cfg.TELEGRAM_BOT_TOKEN,
-                    request=HTTPXRequest(connect_timeout=30, read_timeout=60),
-                ) as bot:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text=f"Retry failed for video {video_id}: {exc}",
-                    )
-            asyncio.run(_notify())
-        except Exception as notify_err:
-            log.warning("Failed to send retry-failure notification: %s", notify_err)
-
-
-# ── Bot runner ────────────────────────────────────────────────────────────────
-
-def run_bot() -> None:
-    if not cfg.TELEGRAM_BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN not set in .env")
-
-    app = Application.builder().token(cfg.TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CallbackQueryHandler(_handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_text))
-
-    log.info("Telegram review bot polling...")
-    app.run_polling(drop_pending_updates=True)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
-    run_bot()

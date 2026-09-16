@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 def _build_system_prompt(target: str, niche: dict) -> str:
     """System prompt for the refinement LLM call."""
     art_style = niche.get("art_style_prompt_suffix", "")
+    tone = niche.get("tone", "")
 
     if target == "generation":
         return (
@@ -35,6 +36,7 @@ def _build_system_prompt(target: str, niche: dict) -> str:
             "- Add composition terms (close-up, wide shot, low angle, etc.)\n"
             "- Add lighting terms (dramatic lighting, golden hour, rim light, etc.)\n"
             "- Keep scene-specific content — what is unique about THIS scene\n"
+            f"- Match this video's tone/mood in every prompt: {tone}\n"
             f"- Append this art style to every prompt: {art_style}\n"
             "- Each refined prompt: 1-3 sentences, under 200 characters\n"
             "- Respond with valid JSON only — no markdown fences"
@@ -47,6 +49,7 @@ def _build_system_prompt(target: str, niche: dict) -> str:
             "- Replace abstract/symbolic language with visible, searchable subjects\n"
             "- Use nouns and adjectives that stock photo sites index well\n"
             "- Keep scene-specific content — what is unique about THIS scene\n"
+            f"- Match this video's tone/mood: {tone}\n"
             "- Each refined prompt: short phrase, 5-15 words, no full sentences\n"
             "- Respond with valid JSON only — no markdown fences"
         )

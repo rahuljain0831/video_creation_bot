@@ -270,10 +270,8 @@ def main() -> None:
                         help="Stop after script generation (no images, no video)")
     parser.add_argument("--no-telegram", action="store_true",
                         help="Skip Telegram send (video still assembled)")
-    parser.add_argument("--auto-approve", action="store_true",
-                        help="Skip Telegram review, upload to Drive and schedule immediately")
     parser.add_argument("--schedule-time", default=None,
-                        help="Override upload time in IST, format HH:MM (e.g. 09:10). Used with --auto-approve.")
+                        help="Override upload time in IST, format HH:MM (e.g. 09:10).")
     parser.add_argument("--myth-type", default=None,
                         choices=["hindu", "norse", "egypt", "greek"],
                         help="Mythology sub-type (only for mythology niche)")
@@ -485,12 +483,19 @@ def main() -> None:
         )
         conn.commit()
 
-        # ── Step 5: Telegram ──────────────────────────────────────────────────
+        # ── Step 5: auto-approve + schedule ─────────────────────────────────────
+        #
+        # No manual review gate. Content safety is enforced upstream instead —
+        # image_gen.py's mandatory nsfw_flagged() check (pipeline/image_critic.py)
+        # rejects and retries any scene flagged for nudity/sexual content before
+        # it's ever saved, and every active niche's image_prompt_rules already
+        # forbids humans/faces/hands outright. Telegram, when configured, is a
+        # notification only — nothing waits on it.
         if args.no_telegram:
             log.info("[5/5] --no-telegram: skipping.")
             log.info("Final video: %s", output_path)
-        elif args.auto_approve:
-            log.info("[5/5] --auto-approve: uploading to Drive + scheduling all platforms...")
+        else:
+            log.info("[5/5] Auto-approving — uploading to Drive + scheduling all platforms...")
             conn.execute("UPDATE videos SET status='approved' WHERE id=?", (video_id,))
             conn.commit()
             from pipeline.drive_storage import upload_to_drive
@@ -514,58 +519,26 @@ def main() -> None:
             for platform in _PLATFORMS:
                 schedule_video(video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
                                force_platform=platform, force_time=force_time)
-            log.info("Scheduled on %s. Telegram confirmation after each GH Actions run.", _PLATFORMS)
-        else:
-            log.info("[5/5] Sending to Telegram...")
-            caption = (
-                f"*Niche:* {niche['label']}\n"
-                f"*Story:* {script['story_title']}\n"
-                f"*Scenes:* {script['scene_count']}"
-            )
-            from review.telegram_bot import send_for_review
-            send_for_review(
-                video_id=video_id,
-                file_path=output_path,
-                quote_text=caption,
-                conn=conn,
-            )
-            conn.execute("UPDATE videos SET status='sent' WHERE id=?", (video_id,))
-            conn.commit()
-            log.info("Sent to Telegram.")
+            log.info("Scheduled on %s.", _PLATFORMS)
 
-            # Send per-platform social captions as follow-up message with Approve/Reject buttons
+            # FYI only — no buttons, nothing waits on this.
             try:
-                from pipeline.social_captions import generate_social_captions, format_telegram_message
-                import asyncio
-                from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-                from telegram.request import HTTPXRequest
-
-                log.info("[5/5] Generating social captions...")
-                social_caps = generate_social_captions(script, niche, cfg)
-                if social_caps:
-                    msg_text = format_telegram_message(script["story_title"], social_caps)
-                    if len(msg_text) > 4000:
-                        msg_text = msg_text[:4000] + "\n...(truncated)"
-                    keyboard = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("✅ Approve", callback_data=f"approve:{video_id}"),
-                        InlineKeyboardButton("❌ Reject",  callback_data=f"reject:{video_id}"),
-                    ]])
-                    async def _send_captions():
-                        async with Bot(
-                            token=cfg.TELEGRAM_BOT_TOKEN,
-                            request=HTTPXRequest(connect_timeout=30, read_timeout=60),
-                        ) as bot:
-                            await bot.send_message(
-                                chat_id=cfg.TELEGRAM_CHAT_ID,
-                                text=msg_text,
-                                reply_markup=keyboard,
-                            )
-                    asyncio.run(_send_captions())
-                    log.info("Social captions sent to Telegram with Approve/Reject buttons.")
-                else:
-                    log.warning("Social captions empty — skipping follow-up message.")
+                caption = (
+                    f"*Niche:* {niche['label']}\n"
+                    f"*Story:* {script['story_title']}\n"
+                    f"*Scenes:* {script['scene_count']}\n"
+                    f"*Status:* auto-approved, scheduled on {', '.join(_PLATFORMS)}"
+                )
+                from review.telegram_bot import send_for_review
+                send_for_review(
+                    video_id=video_id,
+                    file_path=output_path,
+                    quote_text=caption,
+                    conn=conn,
+                )
+                log.info("Notification sent to Telegram.")
             except Exception as e:
-                log.warning("Social captions send failed (non-fatal): %s", e)
+                log.warning("Telegram notification failed (non-fatal): %s", e)
 
         log.info("=" * 60)
         log.info("Done. video_id=%d  file=%s", video_id, output_path)

@@ -1,0 +1,140 @@
+name: Scheduled Video Generation
+
+on:
+  # One niche per run, rotating across the day. scary_stories is excluded —
+  # it needs the separate Remotion/Node toolchain (npm ci, Chrome headless
+  # shell), not covered by this workflow. mythology is disabled per standing
+  # project rule (see CLAUDE.md).
+  schedule:
+    - cron: '0 3 * * *'   # heists
+    - cron: '0 9 * * *'   # space_science
+    - cron: '0 15 * * *'  # ai_tech_tools
+    - cron: '0 21 * * *'  # finance_facts
+  workflow_dispatch:
+    inputs:
+      niche:
+        description: 'Niche id to generate'
+        required: true
+        default: 'heists'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve niche for this run
+        id: niche
+        run: |
+          if [ -n "${{ github.event.inputs.niche }}" ]; then
+            echo "id=${{ github.event.inputs.niche }}" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ github.event.schedule }}" in
+              '0 3 * * *')  echo "id=heists" >> "$GITHUB_OUTPUT" ;;
+              '0 9 * * *')  echo "id=space_science" >> "$GITHUB_OUTPUT" ;;
+              '0 15 * * *') echo "id=ai_tech_tools" >> "$GITHUB_OUTPUT" ;;
+              '0 21 * * *') echo "id=finance_facts" >> "$GITHUB_OUTPUT" ;;
+              *) echo "id=heists" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+
+      - name: Validate required secrets
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          fail=0
+          [ -z "$SA_JSON" ]   && echo "::error::GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON not set" && fail=1
+          [ -z "$FOLDER_ID" ] && echo "::error::GOOGLE_DRIVE_FOLDER_ID not set" && fail=1
+          [ -z "$STATE_ID" ]  && echo "::error::GOOGLE_DRIVE_STATE_ID not set" && fail=1
+          [ -z "$BOT_TOKEN" ] && echo "::error::TELEGRAM_BOT_TOKEN not set" && fail=1
+          [ $fail -eq 1 ] && exit 1
+          echo "All required secrets present"
+
+      - name: Write Drive credentials
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          mkdir -p credentials
+          echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+
+      - name: Generate video
+        env:
+          GOOGLE_DRIVE_AUTH: service_account
+          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
+          GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
+          GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
+          GOOGLE_DRIVE_STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # LLM providers — llm_keys.json holds the routing order/models, these
+          # just need to be non-empty for the ones that lack an inline api_key.
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+          KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          VOIDAI_API_KEY: ${{ secrets.VOIDAI_API_KEY }}
+          INTERNLM_API_KEY: ${{ secrets.INTERNLM_API_KEY }}
+          XKIRO_API_KEY: ${{ secrets.XKIRO_API_KEY }}
+          AIONLABS_API_KEY: ${{ secrets.AIONLABS_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ELECTRONHUB_API_KEY: ${{ secrets.ELECTRONHUB_API_KEY }}
+          FASTROUTER_API_KEY: ${{ secrets.FASTROUTER_API_KEY }}
+          EVOLVEX_API_KEY: ${{ secrets.EVOLVEX_API_KEY }}
+          GONKABROKER_API_KEY: ${{ secrets.GONKABROKER_API_KEY }}
+          LLMKIWI_API_KEY: ${{ secrets.LLMKIWI_API_KEY }}
+          LITEROUTER_API_KEY: ${{ secrets.LITEROUTER_API_KEY }}
+          MEGANOVA_API_KEY: ${{ secrets.MEGANOVA_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          MIXLAYER_API_KEY: ${{ secrets.MIXLAYER_API_KEY }}
+          ROUTEWAY_API_KEY: ${{ secrets.ROUTEWAY_API_KEY }}
+          SEALION_API_KEY: ${{ secrets.SEALION_API_KEY }}
+          TOKENREPLY_API_KEY: ${{ secrets.TOKENREPLY_API_KEY }}
+          TOKENESS_API_KEY: ${{ secrets.TOKENESS_API_KEY }}
+          ZYLOAI_API_KEY: ${{ secrets.ZYLOAI_API_KEY }}
+          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+        run: python scripts/run_scheduled_generation.py "${{ steps.niche.outputs.id }}"
+
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NICHE: ${{ steps.niche.outputs.id }}
+        run: |
+          python - <<'EOF'
+          import os, json, urllib.request
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat  = os.environ["TELEGRAM_CHAT_ID"]
+          url   = os.environ["RUN_URL"]
+          niche = os.environ.get("NICHE", "?")
+          msg   = f"❌ *scheduled-generation failed* ({niche})\n{url}"
+          data  = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "Markdown"}).encode()
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data, headers={"Content-Type": "application/json"}
+          ))
+          EOF

@@ -63,6 +63,118 @@
       "reset_time_utc": "00:00",
       "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
       "notes": "No key configured currently."
+    },
+    "mistral": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free tier estimate."
+    },
+    "xkiro": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier model access, estimate."
+    },
+    "aionlabs": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "voidai": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "mixlayer": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "gonkabroker": {
+      "daily_limit": 100,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free tier is 6 RPM — low daily estimate on purpose."
+    },
+    "literouter": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "meganova": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "sealion": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "llmkiwi": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "routeway": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "tokenreply": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "tokeness": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free-tier estimate."
+    },
+    "zyloai": {
+      "daily_limit": 200,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Free plan — only muse-glimmer-30b/laguna-xs-2.1 confirmed usable."
+    },
+    "ollama_cloud": {
+      "daily_limit": 500,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Ollama Cloud free tier, estimate."
+    },
+    "evolvex": {
+      "daily_limit": 0,
+      "reset_interval": "daily",
+      "reset_time_utc": "00:00",
+      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
+      "notes": "Disabled (empty api_key) — backend 404s on chat completions."
     }
   },
   "quota_tracking_strategy": {

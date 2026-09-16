@@ -10,13 +10,15 @@ Two kinds of check:
 
   * Free ones, from the pixels — exposure, and whether this frame is a near
     duplicate of another scene in the same video. No model, instant.
-  * A local vision model (Ollama), which is the only thing that can catch the
-    flaw class that actually hurt: the generator quietly rendering something
-    else. Asked for "a tablet showing a porch camera feed", FLUX returned a
-    corridor — no heuristic can see that, and it cost a scene.
+  * A vision model, which is the only thing that can catch the flaw class that
+    actually hurt: the generator quietly rendering something else. Asked for
+    "a tablet showing a porch camera feed", FLUX returned a corridor — no
+    heuristic can see that, and it cost a scene.
 
-Local by design. The cloud vision quota is the same quota the image generation
-needs, and spending it on criticism is the wrong trade.
+Local Ollama first — free, and doesn't compete with image generation for cloud
+vision quota. Falls back to Gemini's multimodal API when no local daemon is
+reachable at all (GitHub Actions runners have none), so the mandatory NSFW
+check in nsfw_flagged() still runs somewhere rather than silently no-op'ing.
 
 Latency note: the image is downscaled before it is sent. At full 1080x1920 a
 critique takes ~83s on CPU; at 768px wide it takes ~15s and returns the same
@@ -159,37 +161,23 @@ def subject_overlap(subject: str, description: str) -> float:
     return len(seen & asked) / len(seen)
 
 
-def _ask_vision(config: dict, b64: str) -> dict:
-    """
-    Ask the local model what it can see. Raises RuntimeError on any failure.
+_VISION_PROMPT = (
+    "Describe only what is actually visible in this image. Do not guess at "
+    "intent.\nAnswer as JSON only, no other text:\n"
+    '{"what_it_shows": "<at most 10 words>", '
+    '"face_clearly_visible": true or false, "hands_clearly_visible": true or false, '
+    '"nudity_or_sexual_content": true or false}'
+)
 
-    Note there is no `subject` parameter, and that is the point: the model is
-    never told what the image was meant to be, so it has nothing to agree with.
-    """
-    # The model is never asked whether the image matches. It is bad at that and
-    # good at describing: shown a corridor that should have been a tablet
-    # displaying a porch camera feed, it answered "A dark hallway with a door at
-    # the end" — correct — and then still said the subject was present. Asked
-    # the other way round it parroted the description it had been given back as
-    # what it could see.
-    #
-    # So it only reports what is in front of it, and the comparison happens in
-    # Python where it is deterministic and inspectable. The two booleans stay:
-    # those are perceptual questions about this image alone, not comparisons,
-    # and it answers them reliably.
-    prompt = (
-        "Describe only what is actually visible in this image. Do not guess at "
-        "intent.\nAnswer as JSON only, no other text:\n"
-        '{"what_it_shows": "<at most 10 words>", '
-        '"face_clearly_visible": true or false, "hands_clearly_visible": true or false, '
-        '"nudity_or_sexual_content": true or false}'
-    )
+
+def _ask_vision_local(config: dict, b64: str) -> dict:
+    """Ask the local Ollama model what it can see. Raises RuntimeError on failure."""
     try:
         resp = requests.post(
             f"{config['host'].rstrip('/')}/api/generate",
             json={
                 "model": config["model"],
-                "prompt": prompt,
+                "prompt": _VISION_PROMPT,
                 "images": [b64],
                 "stream": False,
                 "options": {"temperature": 0, "num_predict": 160},
@@ -200,7 +188,45 @@ def _ask_vision(config: dict, b64: str) -> dict:
         text = resp.json().get("response", "")
     except (requests.RequestException, ValueError) as e:
         raise RuntimeError(f"local vision model unreachable: {e}") from e
+    return _parse_vision_json(text)
 
+
+def _ask_vision_cloud(config: dict, b64: str) -> dict:
+    """
+    Ask Gemini's multimodal API the same question, for hosts with no local
+    Ollama (GitHub Actions runners). Same GOOGLE_AI_STUDIO_API_KEY already used
+    for image generation elsewhere — no new key needed.
+    """
+    import os
+
+    api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("no cloud vision fallback available: GOOGLE_AI_STUDIO_API_KEY unset")
+
+    model = config.get("cloud_model", "gemini-3.6-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    try:
+        resp = requests.post(
+            url,
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [
+                    {"text": _VISION_PROMPT},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
+                ]}],
+                "generationConfig": {"temperature": 0},
+            },
+            timeout=config["timeout_seconds"],
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (requests.RequestException, ValueError, KeyError, IndexError) as e:
+        raise RuntimeError(f"cloud vision model unreachable: {e}") from e
+    return _parse_vision_json(text)
+
+
+def _parse_vision_json(text: str) -> dict:
     # Small models fence their JSON about half the time.
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
@@ -209,6 +235,38 @@ def _ask_vision(config: dict, b64: str) -> dict:
         return json.loads(match.group(0))
     except json.JSONDecodeError as e:
         raise RuntimeError(f"bad JSON from vision model: {e}") from e
+
+
+def _ask_vision(config: dict, b64: str) -> dict:
+    """
+    Ask what the image shows. Raises RuntimeError only if both paths fail.
+
+    Note there is no `subject` parameter, and that is the point: the model is
+    never told what the image was meant to be, so it has nothing to agree with.
+    The model is never asked whether the image matches. It is bad at that and
+    good at describing: shown a corridor that should have been a tablet
+    displaying a porch camera feed, it answered "A dark hallway with a door at
+    the end" — correct — and then still said the subject was present. Asked
+    the other way round it parroted the description it had been given back as
+    what it could see.
+
+    So it only reports what is in front of it, and the comparison happens in
+    Python where it is deterministic and inspectable. The two booleans stay:
+    those are perceptual questions about this image alone, not comparisons,
+    and it answers them reliably.
+
+    Local Ollama first (free, no quota competition with image generation);
+    Gemini vision as fallback when local is unreachable — the only case that
+    matters is a host with no local daemon at all (GitHub Actions), where the
+    mandatory NSFW check would otherwise silently no-op.
+    """
+    try:
+        return _ask_vision_local(config, b64)
+    except RuntimeError as local_err:
+        try:
+            return _ask_vision_cloud(config, b64)
+        except RuntimeError as cloud_err:
+            raise RuntimeError(f"local: {local_err}; cloud: {cloud_err}") from cloud_err
 
 
 def critique_image(

@@ -531,11 +531,36 @@ statement. Write it the way it would be *said*:
     }}
   ]
 }}"""
+        narrowing_rule = (
+            f'The angle "{topic}" is a broad category, not the topic. Narrow it down to '
+            "ONE specific mechanism, incident, or example within it — not a general survey. "
+            'e.g. for the angle "stars", pick "how a star collapses into a supernova", not '
+            '"facts about stars". Go deep on that one narrow thing rather than wide across '
+            "many."
+            if topic
+            else ""
+        )
         rules = f"""Use {min_scenes} to {max_scenes} scenes. Each scene is 3-8 seconds of screen time.
 Build narrative tension across scenes. Final scene should resolve or land with impact.
 Narration must be tight — total video is {min_dur}-{max_dur} seconds.
 Make the story genuinely interesting: unexpected twists, real tension, vivid details.
-Avoid generic openings — hook the viewer in scene 1."""
+{narrowing_rule}
+
+Scene 1 must open as a direct question to the viewer that names the specific subject —
+"Do you know how the [specific thing] actually happened?" or "Did you know how [specific
+thing] worked?" — never a generic statement. The question itself is the hook; it must be
+answerable only by watching.
+
+NARRATOR VOICE — this is someone explaining something fascinating to a curious friend, not
+reading a textbook entry. Avoid the flat, uniform-sentence-length feel of a report:
+  - Vary sentence rhythm. Not every line is the same length or shape — mix a short
+    punchy line with a longer explanatory one.
+  - Use concrete, specific detail over generic description: a number, a name, an exact
+    mechanism — "the core collapses in under a second" beats "something dramatic happens".
+  - Talk to the viewer occasionally with direct address ("here's the part most people get
+    wrong") — not every line, just enough to keep it feeling spoken rather than read.
+  - No textbook phrasing: no "it is important to note that", no "in conclusion", no
+    encyclopedia tone. Plain, spoken words."""
 
     user_prompt = f"""Write a {niche_label} video script.
 

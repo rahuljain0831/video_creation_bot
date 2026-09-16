@@ -317,11 +317,11 @@
     "fallback_query": "abstract cinematic background"
   },
   "prompt_refiner": {
-    "enabled": false
+    "enabled": true
   },
   "image_gen": {
-    "width": 1080,
-    "height": 1920,
+    "width": 720,
+    "height": 1280,
     "timeout_seconds": 120,
     "no_humans": true,
     "local_fallback": true,
@@ -372,10 +372,11 @@
     "github_repo": "rahuljain0831/video_creation_bot"
   },
   "image_critic": {
-    "_comment": "Local vision-model audit of generated images. Runs after a video is built, never during it; findings land in prompt_notes.json and improve the next run's prompts. Scaffolding for a young pipeline — set enabled false once the prompts stabilise.",
+    "_comment": "Vision-model audit of generated images (post-hoc critique) plus the mandatory nsfw_flagged() safety check called inline from image_gen.py. Local Ollama first, Gemini vision fallback when no local daemon is reachable (GitHub Actions) — see pipeline/image_critic.py._ask_vision. Must stay enabled: this is the automated content-safety gate that replaced manual Telegram review.",
     "enabled": true,
     "host": "http://localhost:11434",
     "model": "qwen2.5vl:3b",
+    "cloud_model": "gemini-3.6-flash",
     "max_width": 768,
     "timeout_seconds": 180,
     "min_luma": 18,

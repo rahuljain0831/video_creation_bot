@@ -43,6 +43,10 @@ _PROVIDER_ENV_MAP = {
     "together_ai":  ("TOGETHERAI_API_KEY", "TOGETHER_API_KEY"),
     "huggingface":  ("HF_API_TOKEN", "HUGGINGFACE_API_KEY"),
     "pollinations": (),
+    "cloudflare":   ("CLOUDFLARE_API_TOKEN",),
+    "fastrouter":   ("FASTROUTER_API_KEY",),
+    "electronhub":  ("ELECTRONHUB_API_KEY",),
+    "stability":    ("STABILITY_API_KEY",),
 }
 
 # Camera language per shot type, prefixed to the prompt.
@@ -361,23 +365,103 @@ def _gen_gemini(provider, prompt, negative, width, height, timeout, seed) -> byt
     raise ImageGenError("gemini response contained no inline image data")
 
 
+def _gen_cloudflare(provider, prompt, negative, width, height, timeout, seed) -> bytes:
+    """
+    Cloudflare Workers AI. Model id is part of the URL path, not the request
+    body — the account_id (from settings, not litellm-style) also goes in the
+    path. Response shape varies by model: some (flux-1-schnell) wrap the image
+    as base64 JSON, others (SDXL, dreamshaper) return raw image bytes directly.
+    """
+    model = provider.get("model", "@cf/black-forest-labs/flux-1-schnell")
+    account_id = provider.get("account_id", "")
+    if not account_id:
+        raise ImageGenError("cloudflare provider missing account_id")
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+    resp = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {provider['api_key']}"},
+        json={"prompt": prompt},
+        timeout=timeout,
+    )
+    if resp.status_code != 200:
+        raise ImageGenError(f"cloudflare HTTP {resp.status_code}: {resp.text[:300]}")
+    if "json" in resp.headers.get("content-type", ""):
+        b64 = resp.json().get("result", {}).get("image")
+        if not b64:
+            raise ImageGenError("cloudflare response contained no image data")
+        return base64.b64decode(b64)
+    return resp.content
+
+
+def _gen_openai_images_url(base_url: str, provider, prompt, timeout) -> bytes:
+    """
+    Shared by providers that expose a standard /v1/images/generations endpoint
+    returning {"data": [{"url": ...}]} rather than inline base64 — fetch the
+    URL to get the actual bytes.
+    """
+    resp = requests.post(
+        base_url,
+        headers={"Authorization": f"Bearer {provider['api_key']}"},
+        json={"model": provider.get("model", ""), "prompt": prompt, "n": 1},
+        timeout=timeout,
+    )
+    if resp.status_code != 200:
+        raise ImageGenError(f"{provider['name']} HTTP {resp.status_code}: {resp.text[:300]}")
+    items = resp.json().get("data", [])
+    if not items or not items[0].get("url"):
+        raise ImageGenError(f"{provider['name']} response contained no image url")
+    img_resp = requests.get(items[0]["url"], timeout=timeout)
+    img_resp.raise_for_status()
+    return img_resp.content
+
+
+def _gen_fastrouter(provider, prompt, negative, width, height, timeout, seed) -> bytes:
+    return _gen_openai_images_url(
+        "https://go.fastrouter.ai/api/v1/images/generations", provider, prompt, timeout,
+    )
+
+
+def _gen_electronhub(provider, prompt, negative, width, height, timeout, seed) -> bytes:
+    return _gen_openai_images_url(
+        "https://api.electronhub.ai/v1/images/generations", provider, prompt, timeout,
+    )
+
+
+def _gen_stability(provider, prompt, negative, width, height, timeout, seed) -> bytes:
+    """Stability AI — multipart request, raw image bytes back directly."""
+    resp = requests.post(
+        "https://api.stability.ai/v2beta/stable-image/generate/core",
+        headers={"Authorization": f"Bearer {provider['api_key']}", "Accept": "image/*"},
+        files={"none": ""},
+        data={"prompt": prompt, "output_format": "png"},
+        timeout=timeout,
+    )
+    if resp.status_code != 200:
+        raise ImageGenError(f"stability HTTP {resp.status_code}: {resp.text[:300]}")
+    return resp.content
+
+
 _HANDLERS = {
     "pollinations": _gen_pollinations,
     "huggingface":  _gen_huggingface,
     "together_ai":  _gen_together,
     "gemini":       _gen_gemini,
+    "cloudflare":   _gen_cloudflare,
+    "fastrouter":   _gen_fastrouter,
+    "electronhub":  _gen_electronhub,
+    "stability":    _gen_stability,
 }
 
 
 # Providers that run a FLUX-family diffusion model. They share an attention
 # cliff (CLIP truncates around 77 tokens) that Gemini does not have, so they get
 # a different serialization of the same intent.
-_FLUX_PROVIDERS = ("pollinations", "huggingface", "together_ai")
+_FLUX_PROVIDERS = ("pollinations", "huggingface", "together_ai", "cloudflare", "fastrouter")
 
 # Providers with no negative-prompt channel at all. Every constraint has to be
 # phrased positively inside the prompt or it is silently discarded — which is
 # how "no daylight" was being dropped on the most-used fallback.
-_NO_NEGATIVE_CHANNEL = ("pollinations",)
+_NO_NEGATIVE_CHANNEL = ("pollinations", "cloudflare", "fastrouter")
 
 
 def build_positive_prompt(
