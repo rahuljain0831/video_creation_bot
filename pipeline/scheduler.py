@@ -4,6 +4,7 @@ pipeline/scheduler.py — Platform rotation, time selection, and upload_schedule
 Provides:
     get_next_platform(niche_id, conn) -> str
     pick_optimal_time(niche_id, platform, conn) -> datetime
+    next_queue_slot(niche_id, platform, conn) -> datetime
     schedule_video(video_id, niche_id, drive_file_id, drive_manifest_id, conn) -> dict
 """
 
@@ -185,6 +186,37 @@ def pick_optimal_time(
         days=1
     )
     return fallback
+
+
+def next_queue_slot(niche_id: str, platform: str, conn) -> datetime:
+    """
+    Next slot for this niche+platform, appending after the whole pending
+    upload queue rather than anchoring to today/tomorrow (pick_optimal_time's
+    default). A queue with 10 pending uploads out through day N gets an 11th
+    added on day N or the first day after it with room — not interleaved into
+    today, and not blind to what's already queued past tomorrow.
+
+    Still uses the niche's own default/adaptive hour rotation per platform
+    (via pick_optimal_time's on_date mode) — this only changes *which day* is
+    searched, not how a day's hour is chosen.
+    """
+    tail_row = conn.execute(
+        "SELECT MAX(scheduled_at) FROM upload_schedule WHERE status='pending'"
+    ).fetchone()
+    if not tail_row or not tail_row[0]:
+        return pick_optimal_time(niche_id, platform, conn)
+
+    tail_dt = datetime.strptime(tail_row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    candidate_date = tail_dt.date()
+
+    for _ in range(14):  # safety cap — a real queue never runs this dry
+        earliest = tail_dt if candidate_date == tail_dt.date() else None
+        slot = pick_optimal_time(niche_id, platform, conn, on_date=candidate_date, earliest=earliest)
+        if slot is not None:
+            return slot
+        candidate_date += timedelta(days=1)
+
+    return pick_optimal_time(niche_id, platform, conn)
 
 
 def schedule_video(

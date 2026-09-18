@@ -515,10 +515,15 @@ def main() -> None:
                     target_ist += timedelta(days=1)
                 force_time = (target_ist - ist_offset).replace(tzinfo=timezone.utc)
                 log.info("Forcing upload time: %s IST = %s UTC", args.schedule_time, force_time.strftime("%Y-%m-%d %H:%M"))
-            from pipeline.scheduler import _PLATFORMS
+            from pipeline.scheduler import _PLATFORMS, next_queue_slot
             for platform in _PLATFORMS:
+                # No explicit --schedule-time: append after the whole pending
+                # queue (next_queue_slot) rather than pick_optimal_time's
+                # today/tomorrow default, so a video generated mid-queue lands
+                # after everything already scheduled, not interleaved into it.
+                platform_time = force_time or next_queue_slot(niche["id"], platform, conn)
                 schedule_video(video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
-                               force_platform=platform, force_time=force_time)
+                               force_platform=platform, force_time=platform_time)
             log.info("Scheduled on %s.", _PLATFORMS)
 
             # FYI only — no buttons, nothing waits on this.
