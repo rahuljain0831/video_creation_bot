@@ -37,8 +37,18 @@ _TRANSIENT_CODES = (429, 500, 502, 503, 504)
 
 
 def _retry_drive(func, *args, attempts=3, **kwargs):
-    """Retry a Drive API call on transient HTTP errors."""
+    """
+    Retry a Drive API call on transient HTTP errors and network blips.
+
+    HttpError with a 429/5xx status is the documented transient case. A raw
+    connection drop mid-upload (SSLEOFError, ConnectionError et al — CI
+    runners see these more than a stable home connection) never reaches an
+    HTTP status at all, so it needs its own unconditional-retry branch rather
+    than being lumped in with "any other HttpError, raise immediately".
+    """
+    import ssl
     from googleapiclient.errors import HttpError
+
     for attempt in range(1, attempts + 1):
         try:
             return func(*args, **kwargs)
@@ -49,6 +59,14 @@ def _retry_drive(func, *args, attempts=3, **kwargs):
             log.warning("Drive %s %d — retry %d/%d in %ds",
                         func.__name__ if hasattr(func, '__name__') else 'op',
                         exc.resp.status, attempt, attempts, pause)
+            time.sleep(pause)
+        except (ssl.SSLError, ConnectionError, TimeoutError, OSError) as exc:
+            if attempt == attempts:
+                raise
+            pause = 2 ** attempt
+            log.warning("Drive %s network error (%s) — retry %d/%d in %ds",
+                        func.__name__ if hasattr(func, '__name__') else 'op',
+                        exc, attempt, attempts, pause)
             time.sleep(pause)
 
 

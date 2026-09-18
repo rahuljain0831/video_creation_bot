@@ -26,17 +26,18 @@ def main():
         sys.exit(1)
     niche_id = sys.argv[1]
 
-    from pipeline.drive_storage import _build_service, _get_subfolder, download_from_drive
+    from pipeline.drive_storage import _build_service, _get_subfolder, _retry_drive, download_from_drive
     from googleapiclient.http import MediaFileUpload
 
     service = _build_service()
     state_folder_id = _get_subfolder("state")
 
     def _find(name: str) -> str | None:
-        results = service.files().list(
+        req = service.files().list(
             q=f"'{state_folder_id}' in parents and name='{name}' and trashed=false",
             spaces="drive", fields="files(id)",
-        ).execute()
+        )
+        results = _retry_drive(req.execute)
         files = results.get("files", [])
         return files[0]["id"] if files else None
 
@@ -60,13 +61,14 @@ def main():
     if db_path.exists():
         media = MediaFileUpload(str(db_path))
         if db_file_id:
-            service.files().update(fileId=db_file_id, media_body=media).execute()
+            req = service.files().update(fileId=db_file_id, media_body=media)
         else:
-            service.files().create(
+            req = service.files().create(
                 body={"name": "schedule_db.sqlite", "parents": [state_folder_id]},
                 media_body=media,
                 fields="id",
-            ).execute()
+            )
+        _retry_drive(req.execute)
         log.info("DB synced back to Drive state")
 
     sys.exit(result.returncode)
