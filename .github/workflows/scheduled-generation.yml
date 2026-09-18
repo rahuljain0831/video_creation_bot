@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Resolve niche for this run
         id: niche
         run: |
@@ -51,7 +54,8 @@ jobs:
 
       - name: Validate required secrets
         env:
-          SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
           FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -59,23 +63,31 @@ jobs:
           IMAGE_KEYS: ${{ secrets.IMAGE_KEYS_JSON }}
         run: |
           fail=0
-          [ -z "$SA_JSON" ]    && echo "::error::GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON not set" && fail=1
-          [ -z "$FOLDER_ID" ]  && echo "::error::GOOGLE_DRIVE_FOLDER_ID not set" && fail=1
-          [ -z "$STATE_ID" ]   && echo "::error::GOOGLE_DRIVE_STATE_ID not set" && fail=1
-          [ -z "$BOT_TOKEN" ]  && echo "::error::TELEGRAM_BOT_TOKEN not set" && fail=1
-          [ -z "$LLM_KEYS" ]   && echo "::error::LLM_KEYS_JSON not set" && fail=1
-          [ -z "$IMAGE_KEYS" ] && echo "::error::IMAGE_KEYS_JSON not set" && fail=1
+          [ -z "$OAUTH_TOKEN" ] && echo "::error::DRIVE_OAUTH_TOKEN not set" && fail=1
+          [ -z "$OAUTH_CREDS" ] && echo "::error::DRIVE_OAUTH_CREDENTIALS not set" && fail=1
+          [ -z "$FOLDER_ID" ]   && echo "::error::GOOGLE_DRIVE_FOLDER_ID not set" && fail=1
+          [ -z "$STATE_ID" ]    && echo "::error::GOOGLE_DRIVE_STATE_ID not set" && fail=1
+          [ -z "$BOT_TOKEN" ]   && echo "::error::TELEGRAM_BOT_TOKEN not set" && fail=1
+          [ -z "$LLM_KEYS" ]    && echo "::error::LLM_KEYS_JSON not set" && fail=1
+          [ -z "$IMAGE_KEYS" ]  && echo "::error::IMAGE_KEYS_JSON not set" && fail=1
           [ $fail -eq 1 ] && exit 1
           echo "All required secrets present"
 
       - name: Write credentials and provider config
         env:
-          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          DRIVE_OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
           LLM_KEYS_JSON: ${{ secrets.LLM_KEYS_JSON }}
           IMAGE_KEYS_JSON: ${{ secrets.IMAGE_KEYS_JSON }}
         run: |
-          mkdir -p credentials
-          echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+          # OAuth, not the service account: a service account has zero personal
+          # Drive storage quota and 403s (storageQuotaExceeded) the moment it
+          # tries to create a genuinely new file (a video, a first-ever state
+          # DB) — fine for updating existing files, not for uploads. OAuth runs
+          # as the human account, which has real quota. Same token/creds
+          # scheduled-upload.yml already uses.
+          echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
+          echo "$DRIVE_OAUTH_CREDS" > oauth_credentials.json
           # llm_keys.json / image_keys.json are gitignored (hold plaintext keys) —
           # a fresh checkout has neither, so the whole provider chain would be
           # empty without this. Written fresh each run, never committed.
@@ -84,8 +96,6 @@ jobs:
 
       - name: Generate video
         env:
-          GOOGLE_DRIVE_AUTH: service_account
-          GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: credentials/drive_service_account.json
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
           GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
