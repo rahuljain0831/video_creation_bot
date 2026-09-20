@@ -241,6 +241,25 @@
         "volume": "+5%",
         "pitch": "+0Hz"
       }
+    },
+    {
+      "id": "skillstotraineyes",
+      "label": "Eye Training Drills",
+      "tone": "calm, playful, encouraging",
+      "art_style_prompt_suffix": "",
+      "enabled": false,
+      "standalone": true,
+      "publish_platforms": ["instagram"],
+      "audio_modes": ["muted", "voiceover"],
+      "bed_pool": ["musicbox"],
+      "disclaimer": "Just an eye exercise for fun. Not medical advice.",
+      "hashtags": ["eyeexercise", "eyetraining", "focus", "brainteaser", "eyes", "reels"],
+      "tts": {
+        "voice_edge": "en-US-AriaNeural",
+        "rate": "-5%",
+        "volume": "+0%",
+        "pitch": "+0Hz"
+      }
     }
   ],
   "llm_router": {
