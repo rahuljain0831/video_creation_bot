@@ -154,23 +154,34 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None) -> D
     # The reveal must be unambiguous, but a crowded arena cannot always give the
     # target three clear radii. Scale the bar with the crowd and keep the best
     # candidate seen, because raising here would kill the whole run.
-    want_gap = 3.0 if n <= 5 else 2.2
-    best = None
-    for attempt in range(60):
-        cand = make_sim(seed * 1000 + attempt, n, arena_r, ball_r, speed, arena_c=(CX, CY))
-        pos0 = cand.pos.copy()
-        frames = run(cand, round(move_s * FPS), FPS)
-        gap = cand.min_gap(0)
-        if best is None or gap > best[0]:
-            best = (gap, cand, pos0, frames)
-        if gap >= want_gap:
-            break
+    def search(n, ball_r, speed, move_s, bumps):
+        want = 3.0 if n <= 5 else 2.2
+        best = None
+        for bump in range(bumps):
+            for attempt in range(60):
+                try:
+                    cand = make_sim(seed * 1000 + bump * 100000 + attempt, n, arena_r,
+                                    ball_r, speed, arena_c=(CX, CY))
+                except ValueError:      # fits() is only a heuristic
+                    continue
+                pos0 = cand.pos.copy()
+                frames = run(cand, round(move_s * FPS), FPS)
+                gap = cand.min_gap(0)
+                if best is None or gap > best[0]:
+                    best = (gap, cand, pos0, frames)
+                if gap >= want:
+                    return best
+            if best and best[0] >= MIN_GAP:
+                break
+        return best
+
+    MIN_GAP = 2.0
+    best = search(n, ball_r, speed, move_s, 5)
+    if best is None or best[0] < MIN_GAP:
+        log.warning("tracking: no clear reveal at n=%d r=%d; using safe pack", n, ball_r)
+        n, ball_r, speed, decoy, move_s = 4, 40, 320.0, "distinct", 12
+        best = search(n, ball_r, speed, move_s, 5)
     gap, sim, pos0, frames = best
-    if gap < want_gap:
-        # ponytail: best-effort reveal. Tighten by lowering the top `n` option
-        # if this warns often at god level.
-        log.warning("tracking: best reveal gap %.1f radii (wanted %.1f) at n=%d",
-                    gap, want_gap, n)
 
     target = 0                                  # id, not colour
     final = sim.pos.copy()
@@ -204,14 +215,14 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None) -> D
                 if revealed:
                     out.append(("ring", x, y, ball_r + 16, accent, 6))
             else:
+                col = WHITE
                 if revealed:
                     col = DIM
-                elif decoy == "identical":
-                    col = RED if i == 1 else WHITE     # one convincing double
-                elif decoy == "similar":
-                    col = (210, 110, 110)
-                else:
-                    col = WHITE
+                elif t >= t_recolor:           # lures only once the target has gone white
+                    if decoy == "identical" and i == 1:
+                        col = RED
+                    elif decoy == "similar":
+                        col = (210, 110, 110)
                 out.append(("disc", x, y, ball_r, col))
         return out + _text_ops(t, hook, 2.5, question, t_q, cta, t_cta, badge=badge)
 

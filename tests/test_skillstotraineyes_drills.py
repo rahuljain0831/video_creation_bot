@@ -4,6 +4,10 @@ import subprocess
 
 import pytest
 
+from skillstotraineyes import drills as drills_mod
+from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL, fits
+from skillstotraineyes.sim import Sim
+
 from skillstotraineyes.drills import (
     BUILDERS, FAMILIES, H, SAFE_BOTTOM, W, build, pick_family,
 )
@@ -85,7 +89,6 @@ def test_audio_length_matches_video(tmp_path):
     assert abs(dur["audio"] - dur["video"]) < 0.1
 
 
-from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -109,8 +112,6 @@ def test_badge_is_gone_by_the_end(family):
     last = [op[1] for op in d.ops(d.frames - 1) if op[0] == "text"]
     assert LEVEL_LABEL["god"] not in last
 
-
-from skillstotraineyes.difficulty import LEVEL_SCORE
 
 
 @pytest.mark.parametrize("level", LEVELS)
@@ -138,6 +139,66 @@ def test_tracking_gets_harder_with_level():
 @pytest.mark.parametrize("level", LEVELS)
 @pytest.mark.parametrize("seed", range(12))
 def test_tracking_params_are_physically_placeable(level, seed):
-    from skillstotraineyes.difficulty import fits
     p = build("tracking", seed, level=level).params
+    assert 2 <= p["n"] <= 10
     assert fits(p["n"], p["arena"], p["ball"])
+
+
+def _discs(d, f):
+    return [o for o in d.ops(f) if o[0] == "disc"]
+
+
+def _reds(d, f):
+    return [i for i, o in enumerate(_discs(d, f)) if o[4] == drills_mod.RED]
+
+
+def _find_decoy(kind):
+    for level in LEVELS:
+        for seed in range(60):
+            d = build("tracking", seed, level=level)
+            if d.params["decoy"] == kind:
+                return d
+    pytest.skip(f"no seed with decoy {kind}")
+
+
+@pytest.mark.parametrize("kind", ["distinct", "similar", "identical"])
+def test_tracking_one_red_at_start_for_every_decoy(kind):
+    d = _find_decoy(kind)
+    assert _reds(d, 0) == [0]
+
+
+def test_tracking_identical_decoy_lure_and_reveal():
+    d = _find_decoy("identical")
+    f = int(4.2 * d.fps)                      # after t_recolor
+    r = _reds(d, f)
+    assert len(r) == 1 and r[0] != 0
+    last = d.frames - 1
+    assert _reds(d, last) == [0]
+    assert any(o[0] == "ring" for o in d.ops(last))
+
+
+def test_tracking_gap_floor_enforced_in_code(monkeypatch):
+    real = Sim.min_gap
+    calls = {"n": 0}
+
+    def jam(self, idx):
+        calls["n"] += 1
+        return 0.5 if calls["n"] <= 400 else real(self, idx)
+    monkeypatch.setattr(Sim, "min_gap", jam)
+    d = build("tracking", 3, level="god")
+    assert d.params["gap"] >= 2.0
+    assert d.params["decoy"] == "distinct" and d.params["n"] == 4
+
+
+def test_tracking_survives_make_sim_valueerror(monkeypatch):
+    real = drills_mod.make_sim
+    calls = {"n": 0}
+
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] <= 70:
+            raise ValueError("infeasible")
+        return real(*a, **k)
+    monkeypatch.setattr(drills_mod, "make_sim", flaky)
+    d = build("tracking", 3, level="god")
+    assert d.params["gap"] >= 2.0
