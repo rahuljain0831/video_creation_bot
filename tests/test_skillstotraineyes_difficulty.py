@@ -60,12 +60,33 @@ def test_harder_levels_really_are_harder():
         return sum(score(BALL_KNOBS, roll(BALL_KNOBS, level, random.Random(s)))
                    for s in range(30)) / 30
     means = [mean(lv) for lv in LEVELS]
-    assert means == sorted(means)
+    assert all(means[i] < means[i + 1] for i in range(len(means) - 1))
 
 
 def test_fits_rejects_an_impossible_pack():
     assert fits(3, 440, 40)
     assert not fits(10, 440, 74), "10 huge balls cannot be placed in a 440px arena"
+    # n out of range
+    assert not fits(1, 440, 40), "n < MIN_BALLS"
+    assert not fits(11, 440, 40), "n > MAX_BALLS"
+    # ball_r * 4 > arena_r
+    assert not fits(3, 100, 30), "ball_r * 4 > arena_r"
+
+
+def test_ball_knobs_max_score_is_reachable():
+    """god level [16, 21) must be reachable: max total score >= 20."""
+    max_scores = {name: max(score_val for _, score_val in KNOBS[name])
+                  for name in BALL_KNOBS}
+    total_max = sum(max_scores.values())
+    assert total_max >= 20, f"max reachable score {total_max} < 20"
+
+
+def test_all_god_rolls_land_in_band():
+    """300 god-level rolls must all land in [16, 21) with no off-band fallback."""
+    for seed in range(300):
+        values = roll(BALL_KNOBS, "god", random.Random(seed))
+        total = score(BALL_KNOBS, values)
+        assert 16 <= total < 21, f"seed {seed} produced {total}, outside [16, 21)"
 
 
 def test_pick_level_avoids_the_previous_level():

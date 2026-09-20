@@ -16,6 +16,8 @@ The badge percentages are labels, not measurements.
 
 import random
 
+from skillstotraineyes.sim import MAX_BALLS, MIN_BALLS
+
 LEVELS = ("easy", "medium", "hard", "expert", "god")
 
 LEVEL_LABEL = {
@@ -43,10 +45,10 @@ LEVEL_WEIGHT = {"easy": 1, "medium": 3, "hard": 3, "expert": 2, "god": 1}
 # renders — see the spec's open items.
 KNOBS: dict[str, tuple[tuple[object, int], ...]] = {
     # Ball drills
-    "n":       ((3, 0), (4, 1), (5, 2), (6, 3), (8, 4), (10, 5)),
+    "n":       ((3, 0), (4, 1), (5, 2), (6, 3), (8, 4), (10, 6)),
     "ball_r":  ((50, 0), (44, 0), (38, 1), (32, 2), (26, 3), (20, 4),
                 (62, 2), (72, 3)),
-    "speed":   ((240, 0), (320, 1), (420, 2), (520, 3), (640, 4)),
+    "speed":   ((240, 0), (320, 1), (420, 2), (520, 3), (640, 5)),
     "decoy":   (("distinct", 0), ("similar", 2), ("identical", 3)),
     "move_s":  ((8, 0), (11, 1), (14, 2), (17, 3)),
     # Path-pursuit drills
@@ -113,7 +115,7 @@ def fits(n: int, arena_r: float, ball_r: float) -> bool:
     it cannot. Random sequential packing jams near a 0.35 area fraction, so
     screening on that here turns a crash into a re-roll.
     """
-    if not 2 <= n <= 10:
+    if not MIN_BALLS <= n <= MAX_BALLS:
         return False
     if ball_r * 4 > arena_r:            # make_sim's own guard
         return False
