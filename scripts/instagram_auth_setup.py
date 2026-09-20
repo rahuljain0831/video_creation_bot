@@ -105,7 +105,8 @@ def _get_instagram_account_id(access_token: str) -> tuple[str, str, str]:
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(ig_pages):
-                return ig_pages[idx]
+                name, ig_id, page_id = ig_pages[idx]
+                return ig_id, name, page_id
         except ValueError:
             pass
         print("Invalid choice, try again.")
