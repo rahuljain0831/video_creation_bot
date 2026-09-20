@@ -79,15 +79,28 @@ def _build_description(
     return "\n\n".join(parts) if parts else title
 
 
-def _get_accounts_for_platform(platform: str, cfg: dict) -> list[dict]:
-    """Return all enabled accounts for a given platform."""
+def _get_accounts_for_platform(
+    platform: str, cfg: dict, niche_id: str | None = None,
+) -> list[dict]:
+    """Return the enabled accounts a video should be posted to on `platform`.
+
+    An account with `"exclusive": true` serves only its own niche, and that
+    niche posts nowhere else — on ANY platform, so a batch script that schedules
+    it on a platform it has no exclusive account for gets nothing back rather
+    than a legacy account. Every other account keeps the original behaviour
+    (all videos go to all of them), so existing niches are unaffected. Without
+    a niche_id (the manual CLI) exclusive accounts are never used.
+    """
     platform_cfg = cfg.get("platforms", {}).get(platform, {})
     if not platform_cfg.get("enabled"):
         return []
-    return [
-        a for a in cfg.get("accounts", [])
-        if a["platform"] == platform and a.get("enabled")
-    ]
+    all_accounts = [a for a in cfg.get("accounts", []) if a.get("enabled")]
+    accounts = [a for a in all_accounts if a["platform"] == platform]
+    if niche_id is not None and any(
+        a.get("exclusive") and a["niche"] == niche_id for a in all_accounts
+    ):
+        return [a for a in accounts if a.get("exclusive") and a["niche"] == niche_id]
+    return [a for a in accounts if not a.get("exclusive")]
 
 
 def _upload_youtube(
@@ -200,6 +213,7 @@ def upload_all(
     hashtags: list[str] | None = None,
     platforms_filter: list[str] | None = None,
     dry_run: bool = False,
+    niche_id: str | None = None,
 ) -> list[dict]:
     """
     Upload a video to all enabled platforms.
@@ -211,6 +225,8 @@ def upload_all(
         hashtags: List of hashtags (optional)
         platforms_filter: If set, only upload to these platforms
         dry_run: If True, show what would happen without uploading
+        niche_id: Routes to an exclusive account for that niche, if one exists
+                  (see _get_accounts_for_platform)
 
     Returns:
         List of result dicts, one per account attempted
@@ -224,7 +240,7 @@ def upload_all(
         if platforms_filter and platform not in platforms_filter:
             continue
 
-        accounts = _get_accounts_for_platform(platform, cfg)
+        accounts = _get_accounts_for_platform(platform, cfg, niche_id)
         if not accounts:
             if platforms_filter and platform in platforms_filter:
                 log.warning(

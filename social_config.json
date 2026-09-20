@@ -37,6 +37,14 @@
       "niche": "all",
       "enabled": true,
       "credentials_file": "credentials/all_niches_ig.json"
+    },
+    {
+      "account_id": "skillstotraineyes_ig",
+      "platform": "instagram",
+      "niche": "skillstotraineyes",
+      "enabled": true,
+      "exclusive": true,
+      "credentials_file": "credentials/skillstotraineyes_ig.json"
     }
   ]
 }

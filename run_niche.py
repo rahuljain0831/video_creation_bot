@@ -495,55 +495,18 @@ def main() -> None:
             log.info("[5/5] --no-telegram: skipping.")
             log.info("Final video: %s", output_path)
         else:
-            log.info("[5/5] Auto-approving — uploading to Drive + scheduling all platforms...")
-            conn.execute("UPDATE videos SET status='approved' WHERE id=?", (video_id,))
-            conn.commit()
-            from pipeline.drive_storage import upload_to_drive
-            from pipeline.scheduler import schedule_video
-            from datetime import datetime, timezone, timedelta
-            drive_file_id = upload_to_drive(output_path, folder_name="pending")
-            slug = Path(output_path).stem
-            script_path = Path(cfg.paths.get("scripts", "output/scripts")) / f"{slug}.json"
-            drive_manifest_id = upload_to_drive(script_path, folder_name="pending") if script_path.exists() else ""
-            force_time = None
-            if args.schedule_time:
-                h_ist, m_ist = map(int, args.schedule_time.split(":"))
-                ist_offset = timedelta(hours=5, minutes=30)
-                now_ist = datetime.now(timezone.utc) + ist_offset
-                target_ist = now_ist.replace(hour=h_ist, minute=m_ist, second=0, microsecond=0)
-                if target_ist <= now_ist:
-                    target_ist += timedelta(days=1)
-                force_time = (target_ist - ist_offset).replace(tzinfo=timezone.utc)
-                log.info("Forcing upload time: %s IST = %s UTC", args.schedule_time, force_time.strftime("%Y-%m-%d %H:%M"))
-            from pipeline.scheduler import _PLATFORMS, next_queue_slot
-            for platform in _PLATFORMS:
-                # No explicit --schedule-time: append after the whole pending
-                # queue (next_queue_slot) rather than pick_optimal_time's
-                # today/tomorrow default, so a video generated mid-queue lands
-                # after everything already scheduled, not interleaved into it.
-                platform_time = force_time or next_queue_slot(niche["id"], platform, conn)
-                schedule_video(video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
-                               force_platform=platform, force_time=platform_time)
-            log.info("Scheduled on %s.", _PLATFORMS)
-
-            # FYI only — no buttons, nothing waits on this.
-            try:
-                caption = (
+            from pipeline.publisher import publish
+            from pipeline.scheduler import _PLATFORMS
+            publish(
+                video_id, output_path, niche, conn, cfg,
+                schedule_time=args.schedule_time,
+                notify_text=(
                     f"*Niche:* {niche['label']}\n"
                     f"*Story:* {script['story_title']}\n"
                     f"*Scenes:* {script['scene_count']}\n"
                     f"*Status:* auto-approved, scheduled on {', '.join(_PLATFORMS)}"
-                )
-                from review.telegram_bot import send_for_review
-                send_for_review(
-                    video_id=video_id,
-                    file_path=output_path,
-                    quote_text=caption,
-                    conn=conn,
-                )
-                log.info("Notification sent to Telegram.")
-            except Exception as e:
-                log.warning("Telegram notification failed (non-fatal): %s", e)
+                ),
+            )
 
         log.info("=" * 60)
         log.info("Done. video_id=%d  file=%s", video_id, output_path)

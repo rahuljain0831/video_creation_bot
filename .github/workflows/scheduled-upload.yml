@@ -50,6 +50,7 @@ jobs:
           DRIVE_OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
           YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
           INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
+          SKILLSTOTRAINEYES_IG_CREDS_JSON: ${{ secrets.SKILLSTOTRAINEYES_IG_CREDENTIALS }}
         run: |
           mkdir -p credentials
           echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
@@ -64,6 +65,9 @@ jobs:
           fi
           if [ -n "$INSTAGRAM_CREDS_JSON" ]; then
             echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+          fi
+          if [ -n "$SKILLSTOTRAINEYES_IG_CREDS_JSON" ]; then
+            echo "$SKILLSTOTRAINEYES_IG_CREDS_JSON" > credentials/skillstotraineyes_ig.json
           fi
 
       - name: Run scheduled upload

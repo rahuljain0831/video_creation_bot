@@ -154,6 +154,7 @@ def process_schedule(manifest, manifest_drive_id, service):
                 description=manifest.get("caption", ""),
                 hashtags=manifest.get("hashtags", []),
                 platforms_filter=[platform],
+                niche_id=manifest.get("niche_id"),
             )
             last_error = None
             break   # success

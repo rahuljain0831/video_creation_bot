@@ -228,6 +228,9 @@ def schedule_video(
     *,
     force_platform: str | None = None,
     force_time: datetime | None = None,
+    title: str | None = None,
+    caption: str = "",
+    hashtags: list[str] | None = None,
 ) -> dict:
     """
     Full scheduling flow for a video:
@@ -240,6 +243,10 @@ def schedule_video(
     force_platform: when set, skip round-robin and schedule for exactly this
     platform ("youtube" | "instagram" | "facebook"). Existing callers are
     unaffected (they pass nothing, so round-robin behaviour is unchanged).
+
+    title / caption / hashtags: written into the manifest as-is. Story niches
+    leave them unset (title is then read from the script JSON, caption empty);
+    niches with no script JSON pass their own.
     """
     if force_platform is not None:
         if force_platform not in _PLATFORMS:
@@ -275,8 +282,9 @@ def schedule_video(
         import tempfile
         from pathlib import Path
         from pipeline.drive_storage import upload_to_drive as _upload_manifest
-        _title = "Untitled"
-        _row = conn.execute("SELECT file_path FROM videos WHERE id=?", (video_id,)).fetchone()
+        _title = title or "Untitled"
+        _row = None if title else conn.execute(
+            "SELECT file_path FROM videos WHERE id=?", (video_id,)).fetchone()
         if _row and _row[0]:
             _slug = Path(_row[0]).stem
             _script_path = Path("output/scripts") / f"{_slug}.json"
@@ -292,8 +300,8 @@ def schedule_video(
             "scheduled_at": scheduled_at_str,
             "niche_id": niche_id,
             "title": _title,
-            "caption": "",
-            "hashtags": [],
+            "caption": caption,
+            "hashtags": hashtags or [],
             "retry_count": 0,
         }
         _tmp_dir = tempfile.mkdtemp()
