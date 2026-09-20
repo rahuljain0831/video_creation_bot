@@ -31,6 +31,9 @@ SAFE_BOTTOM = 1630          # bottom ~15% is covered by the platform UI
 CX, CY = 540, 900           # arena / play-area centre
 TEXT_TOP_Y = 230
 TEXT_LOW_Y = 1450
+BADGE_Y = 120               # above the hook; the hook block starts at TEXT_TOP_Y
+BADGE_SIZE = 54
+BADGE_COLOR = (255, 196, 61)
 
 BG = (10, 13, 26)
 WHITE = (245, 245, 245)
@@ -54,6 +57,7 @@ class Drill:
     chimes: list = field(default_factory=list)     # seconds at which to play the reveal chime
     voice: list = field(default_factory=list)      # [(seconds, line)] for voiceover mode
     fps: int = FPS
+    level: str = ""
 
     @property
     def frames(self) -> int:
@@ -63,9 +67,14 @@ class Drill:
 # ── shared pieces ─────────────────────────────────────────────────────────────
 
 def _text_ops(t: float, hook: str, hook_until: float, question: str, t_q: float,
-              cta: str, t_cta: float) -> list:
+              cta: str, t_cta: float, badge: str = "") -> list:
     if t < hook_until:
-        return [("text", hook, CX, TEXT_TOP_Y, 92, WHITE)]
+        out = [("text", hook, CX, TEXT_TOP_Y, 92, WHITE)]
+        if badge:
+            # Inside the hook window on purpose: a badge segment of its own would
+            # push saccade past the 30s ceiling.
+            out.insert(0, ("text", badge, CX, BADGE_Y, BADGE_SIZE, BADGE_COLOR))
+        return out
     if t >= t_cta:
         return [("text", cta, CX, TEXT_LOW_Y, 88, WHITE)]
     if t >= t_q:
@@ -75,6 +84,12 @@ def _text_ops(t: float, hook: str, hook_until: float, question: str, t_q: float,
 
 def _text(text: dict | None, key: str, default: str) -> str:
     return (text or {}).get(key) or default
+
+
+def _badge(level: str | None) -> str:
+    """Badge text for a level, or "" when the drill is unlevelled."""
+    from skillstotraineyes.difficulty import LEVEL_LABEL
+    return LEVEL_LABEL.get(level or "", "")
 
 
 def _lines(hook: str, question: str, cta: str, t_hook: float, t_q: float, t_cta: float) -> list:
@@ -104,7 +119,7 @@ def too_close(params: dict, recent: list[dict]) -> bool:
 
 # ── tracking (red ball) ───────────────────────────────────────────────────────
 
-def tracking(seed: int, text: dict | None = None) -> Drill:
+def tracking(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     n = rng.randint(2, 5)
     arena_r = rng.choice([400, 420, 440])
@@ -138,6 +153,7 @@ def tracking(seed: int, text: dict | None = None) -> Drill:
     hook = _text(text, "hook", "Track the red ball")
     question = _text(text, "question", "Were you able to track it?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -158,19 +174,20 @@ def tracking(seed: int, text: dict | None = None) -> Drill:
                     out.append(("ring", x, y, ball_r + 16, accent, 6))
             else:
                 out.append(("disc", x, y, ball_r, DIM if revealed else WHITE))
-        return out + _text_ops(t, hook, 2.5, question, t_q, cta, t_cta)
+        return out + _text_ops(t, hook, 2.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("tracking", total, ops,
                  {"family": "tracking", "n": n, "arena": arena_r, "ball": ball_r,
                   "speed": round(speed, -1), "move": move_s},
-                 chimes=[t_reveal], voice=_lines(hook, question, cta, 2.5, t_q, t_cta))
+                 chimes=[t_reveal], voice=_lines(hook, question, cta, 2.5, t_q, t_cta),
+                 level=level or "")
 
 
 # ── smooth-pursuit paths ──────────────────────────────────────────────────────
 
 def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
              dots: list[Callable[[float], tuple]], dur_choices: list, params: dict,
-             trail: bool) -> Drill:
+             trail: bool, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     body = rng.choice(dur_choices)
@@ -181,6 +198,7 @@ def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
     hook = _text(text, "hook", hook_default)
     question = _text(text, "question", "Did you keep up?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -198,13 +216,14 @@ def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
         elif t < hook_until - 0.5:
             x, y = dots[0](0.0)
             out.append(("disc", x, y, 34, accent))
-        return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta)
+        return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill(family, total, ops, {**params, "family": family, "body": body},
-                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta))
+                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
+                 level=level or "")
 
 
-def pursuit_dual(seed: int, text: dict | None = None) -> Drill:
+def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     a, b = rng.choice([(2, 3), (3, 4), (3, 2), (1, 2)])
     w = rng.uniform(0.55, 0.85)
@@ -215,10 +234,10 @@ def pursuit_dual(seed: int, text: dict | None = None) -> Drill:
     def p2(t): return CX + A * math.sin(a * w * t + math.pi), CY + B * math.sin(b * w * t + ph + 1.3)
 
     return _pursuit(seed, text, "pursuit_dual", "Follow both dots with your eyes",
-                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 1)}, trail=False)
+                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 1)}, trail=False, level=level)
 
 
-def figure8(seed: int, text: dict | None = None) -> Drill:
+def figure8(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     w = rng.uniform(0.7, 1.1)
     A, B = 380, 300
@@ -230,12 +249,12 @@ def figure8(seed: int, text: dict | None = None) -> Drill:
         return (CX + x, CY + y) if tilt == 0 else (CX + y, CY + x)
 
     return _pursuit(seed, text, "figure8", "Follow the dot in a figure eight",
-                    [p], [14, 18, 22], {"w": round(w, 1), "tilt": int(tilt > 0)}, trail=True)
+                    [p], [14, 18, 22], {"w": round(w, 1), "tilt": int(tilt > 0)}, trail=True, level=level)
 
 
 # ── saccade grid ──────────────────────────────────────────────────────────────
 
-def saccade(seed: int, text: dict | None = None) -> Drill:
+def saccade(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     cols, rows = rng.choice([(2, 4), (3, 4), (2, 5), (3, 5)])
     step = rng.choice([0.7, 0.85, 1.0])
@@ -260,6 +279,7 @@ def saccade(seed: int, text: dict | None = None) -> Drill:
     hook = _text(text, "hook", "Look at each dot the moment it lights up")
     question = _text(text, "question", "How fast were your eyes?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -269,16 +289,17 @@ def saccade(seed: int, text: dict | None = None) -> Drill:
         out = []
         for i, (x, y) in enumerate(cells):
             out.append(("disc", x, y, 44, accent if i == lit else DIM))
-        return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta)
+        return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("saccade", total, ops,
                  {"family": "saccade", "cols": cols, "rows": rows, "step": step, "len": seq_len},
-                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta))
+                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
+                 level=level or "")
 
 
 # ── peripheral flash ──────────────────────────────────────────────────────────
 
-def peripheral(seed: int, text: dict | None = None) -> Drill:
+def peripheral(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     n = rng.randint(8, 14)
@@ -299,6 +320,7 @@ def peripheral(seed: int, text: dict | None = None) -> Drill:
     hook = _text(text, "hook", "Keep your eyes on the cross")
     question = _text(text, "question", "How many flashes did you catch?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -308,16 +330,17 @@ def peripheral(seed: int, text: dict | None = None) -> Drill:
             if (t - hook_until) - k * gap < flash_s:
                 a = angs[k]
                 out.append(("disc", CX + radius * math.cos(a), CY + radius * math.sin(a), 30, accent))
-        return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta)
+        return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("peripheral", total, ops,
                  {"family": "peripheral", "n": n, "gap": gap, "flash": flash_s, "radius": radius},
-                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta))
+                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
+                 level=level or "")
 
 
 # ── scatter search ────────────────────────────────────────────────────────────
 
-def search(seed: int, text: dict | None = None) -> Drill:
+def search(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     cols, rows = rng.choice([(5, 7), (6, 8), (5, 8)])
@@ -337,6 +360,7 @@ def search(seed: int, text: dict | None = None) -> Drill:
     hook = _text(text, "hook", "Find the square")
     question = _text(text, "question", "Did you spot it?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -350,11 +374,12 @@ def search(seed: int, text: dict | None = None) -> Drill:
             if t >= t_reveal:
                 x, y = cells[odd]
                 out.append(("ring", x + jitter[odd][0], y + jitter[odd][1], 58, accent, 8))
-        return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta)
+        return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("search", total, ops,
                  {"family": "search", "cols": cols, "rows": rows, "look": look_s},
-                 chimes=[t_reveal], voice=_lines(hook, question, cta, hook_until, t_q, t_cta))
+                 chimes=[t_reveal], voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
+                 level=level or "")
 
 
 BUILDERS = {
@@ -367,5 +392,6 @@ BUILDERS = {
 }
 
 
-def build(family: str, seed: int, text: dict | None = None) -> Drill:
-    return BUILDERS[family](seed, text)
+def build(family: str, seed: int, text: dict | None = None,
+          level: str | None = None) -> Drill:
+    return BUILDERS[family](seed, text, level)

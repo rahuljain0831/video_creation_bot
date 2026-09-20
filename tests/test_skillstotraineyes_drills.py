@@ -83,3 +83,28 @@ def test_audio_length_matches_video(tmp_path):
         capture_output=True, text=True).stdout)
     dur = {s["codec_type"]: float(s["duration"]) for s in probe["streams"]}
     assert abs(dur["audio"] - dur["video"]) < 0.1
+
+
+from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("level", LEVELS)
+def test_badge_shows_at_the_start(family, level):
+    d = build(family, 3, level=level)
+    first = [op[1] for op in d.ops(0) if op[0] == "text"]
+    assert LEVEL_LABEL[level] in first
+    assert d.level == level
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("level", LEVELS)
+def test_badge_costs_no_duration(family, level):
+    assert 15 <= build(family, 3, level=level).duration <= 30
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_badge_is_gone_by_the_end(family):
+    d = build(family, 3, level="god")
+    last = [op[1] for op in d.ops(d.frames - 1) if op[0] == "text"]
+    assert LEVEL_LABEL["god"] not in last
