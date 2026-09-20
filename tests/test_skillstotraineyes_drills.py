@@ -108,3 +108,36 @@ def test_badge_is_gone_by_the_end(family):
     d = build(family, 3, level="god")
     last = [op[1] for op in d.ops(d.frames - 1) if op[0] == "text"]
     assert LEVEL_LABEL["god"] not in last
+
+
+from skillstotraineyes.difficulty import LEVEL_SCORE
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("seed", range(12))
+def test_tracking_never_raises_at_any_level(level, seed):
+    d = build("tracking", seed, level=level)
+    assert 15 <= d.duration <= 30
+    assert d.params["level"] == level
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("seed", range(12))
+def test_tracking_reveal_stays_readable(level, seed):
+    """The target must be clear of its neighbours when it lights up."""
+    d = build("tracking", seed, level=level)
+    assert d.params["gap"] >= 2.0, f"{level}/{seed} reveal gap {d.params['gap']}"
+
+
+def test_tracking_gets_harder_with_level():
+    def n_balls(level):
+        return sum(build("tracking", s, level=level).params["n"] for s in range(10))
+    assert n_balls("god") > n_balls("easy")
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("seed", range(12))
+def test_tracking_params_are_physically_placeable(level, seed):
+    from skillstotraineyes.difficulty import fits
+    p = build("tracking", seed, level=level).params
+    assert fits(p["n"], p["arena"], p["ball"])

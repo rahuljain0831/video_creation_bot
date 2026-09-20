@@ -18,12 +18,15 @@ side gutters stay empty.
 """
 
 import json
+import logging
 import math
 import random
 from dataclasses import dataclass, field
 from typing import Callable
 
 from skillstotraineyes.sim import make_sim, run
+
+log = logging.getLogger(__name__)
 
 W, H = 1080, 1920
 FPS = 30
@@ -119,27 +122,55 @@ def too_close(params: dict, recent: list[dict]) -> bool:
 
 # ── tracking (red ball) ───────────────────────────────────────────────────────
 
+_TRACKING_KNOBS = ["n", "ball_r", "speed", "decoy", "move_s"]
+
+
 def tracking(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+    from skillstotraineyes.difficulty import fits, roll
+
     rng = random.Random(seed)
-    n = rng.randint(2, 5)
-    arena_r = rng.choice([400, 420, 440])
-    ball_r = rng.randint(34, 50)
-    speed = rng.uniform(250, 450)
     accent = rng.choice(ACCENTS)
-    move_s = rng.choice([10, 12, 14, 16])
     static_s, recolor_s = 2.0, 2.0
 
-    sim = None
+    # Re-roll rather than raise: an infeasible pack (ten balls at r=72) is a
+    # legitimate draw from the knob table, and make_sim rejects it outright.
+    arena_r = 440
+    for _attempt in range(40):
+        # The arena is re-picked each try, so a preset that pins n and ball_r can
+        # still find a home rather than re-rolling identical values forever.
+        arena_r = rng.choice([400, 420, 440])
+        if level:
+            k = roll(_TRACKING_KNOBS, level, rng)
+            n, ball_r, speed, decoy, move_s = (
+                k["n"], k["ball_r"], float(k["speed"]), k["decoy"], k["move_s"])
+        else:
+            n, ball_r = rng.randint(2, 5), rng.randint(34, 50)
+            speed, decoy, move_s = rng.uniform(250, 450), "distinct", rng.choice([10, 12, 14, 16])
+        if fits(n, arena_r, ball_r):
+            break
+    else:
+        n, ball_r, speed, decoy, move_s = 4, 40, 320.0, "distinct", 12
+
+    # The reveal must be unambiguous, but a crowded arena cannot always give the
+    # target three clear radii. Scale the bar with the crowd and keep the best
+    # candidate seen, because raising here would kill the whole run.
+    want_gap = 3.0 if n <= 5 else 2.2
+    best = None
     for attempt in range(60):
         cand = make_sim(seed * 1000 + attempt, n, arena_r, ball_r, speed, arena_c=(CX, CY))
         pos0 = cand.pos.copy()
         frames = run(cand, round(move_s * FPS), FPS)
-        # Reveal must be unambiguous: target clear of every other ball.
-        if cand.min_gap(0) >= 3.0:
-            sim = cand
+        gap = cand.min_gap(0)
+        if best is None or gap > best[0]:
+            best = (gap, cand, pos0, frames)
+        if gap >= want_gap:
             break
-    if sim is None:
-        raise RuntimeError("no unambiguous reveal found in 60 seeds; relax params")
+    gap, sim, pos0, frames = best
+    if gap < want_gap:
+        # ponytail: best-effort reveal. Tighten by lowering the top `n` option
+        # if this warns often at god level.
+        log.warning("tracking: best reveal gap %.1f radii (wanted %.1f) at n=%d",
+                    gap, want_gap, n)
 
     target = 0                                  # id, not colour
     final = sim.pos.copy()
@@ -173,12 +204,21 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None) -> D
                 if revealed:
                     out.append(("ring", x, y, ball_r + 16, accent, 6))
             else:
-                out.append(("disc", x, y, ball_r, DIM if revealed else WHITE))
+                if revealed:
+                    col = DIM
+                elif decoy == "identical":
+                    col = RED if i == 1 else WHITE     # one convincing double
+                elif decoy == "similar":
+                    col = (210, 110, 110)
+                else:
+                    col = WHITE
+                out.append(("disc", x, y, ball_r, col))
         return out + _text_ops(t, hook, 2.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("tracking", total, ops,
-                 {"family": "tracking", "n": n, "arena": arena_r, "ball": ball_r,
-                  "speed": round(speed, -1), "move": move_s},
+                 {"family": "tracking", "level": level or "", "n": n,
+                  "arena": arena_r, "ball": ball_r, "speed": round(speed, -1),
+                  "decoy": decoy, "move": move_s, "gap": round(gap, 1)},
                  chimes=[t_reveal], voice=_lines(hook, question, cta, 2.5, t_q, t_cta),
                  level=level or "")
 
