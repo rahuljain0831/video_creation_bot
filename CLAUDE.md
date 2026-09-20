@@ -24,6 +24,10 @@ Without them, SA creates a new empty subfolder and finds nothing (or crashes).
 
 These secrets must exist in GitHub repo settings: Settings → Secrets → Actions.
 
+`scheduled-upload.yml` also writes `credentials/skillstotraineyes_ig.json` from secret
+`SKILLSTOTRAINEYES_IG_CREDENTIALS` (the eye-training Instagram account). Additive to the above;
+without it scheduled eye-training uploads fail with "Credentials not found".
+
 ## Commands
 
 ```bash
@@ -45,6 +49,14 @@ python run_niche.py mythology                    # niche id direct
 python run_niche.py mythology "story of Shiva"  # niche + story seed
 python run_niche.py mythology --dry-run          # script only, no images/video
 python run_niche.py mythology --no-telegram      # assemble but skip Telegram send
+
+# Eye-training Reels (standalone niche, see "skillstotraineyes" below)
+python run_skillstotraineyes.py                          # random family + seed, publish to Instagram
+python run_skillstotraineyes.py --family tracking --seed 7   # reproducible
+python run_skillstotraineyes.py --dry-run                # build + validate the drill only, no DB row
+python run_skillstotraineyes.py --no-publish             # render, skip Drive/schedule
+python run_skillstotraineyes.py --no-llm --audio-mode muted   # default wording, no voiceover
+python scripts/instagram_auth_setup.py skillstotraineyes_ig  # (re)create its IG credentials
 
 # Inspect image library coverage
 python list_library.py                    # all indexed deities + image count
@@ -256,8 +268,10 @@ optionally provides a story seed, and the pipeline runs end-to-end.
      Entry point: `assemble_from_images()`.
    - `pipeline/remotion_renderer.py` — drives the `remotion-scary/` Remotion project as a
      subprocess. See "Remotion renderer" below.
-5. `review/telegram_bot.py` — sends video + story metadata for manual review.
-6. After Telegram approval, `pipeline/scheduler.py` handles Google Drive upload, platform selection
+5. `pipeline/publisher.py publish()` — auto-approves (there is **no review gate**; `review/telegram_bot.py`
+   is an FYI notification only) and hands off to the scheduler. Shared by `run_niche.py` and
+   `run_skillstotraineyes.py`.
+6. `pipeline/scheduler.py` handles Google Drive upload, platform selection
    (round-robin per niche via `platform_rotation` table), optimal time scheduling (adaptive from
    `time_performance` data), and queues the upload in `upload_schedule`. `scheduled-upload.yml`'s
    own GitHub Actions cron polls the Drive `pending/` folder for due schedule manifests and fires
@@ -282,7 +296,7 @@ returns early on an unknown provider, so a missing entry means that provider's u
 counted. `format_quota_report()` prints a per-provider used/limit/% block, emitted in the
 `finally` block of every `run_niche.py` and `retry.py` run (success or failure).
 
-**Upload Scheduler (`pipeline/scheduler.py`):** After Telegram approval, uploads video to
+**Upload Scheduler (`pipeline/scheduler.py`):** After auto-approval, uploads video to
 Google Drive, picks next platform (round-robin per niche), selects optimal upload time
 (adaptive based on engagement data, falls back to research-backed defaults), inserts a
 row into `upload_schedule`, and writes a `{schedule_id}_schedule.json` manifest to the Drive
@@ -391,6 +405,8 @@ cut. Net effect: ~2s per shot instead of ~5.3s per scene.
 **Niches:** defined in `settings.json` under `niches[]`. Each entry has `id`, `label`, `tone`,
 and `art_style_prompt_suffix`. Adding a new niche = adding a config entry, no code changes.
 Mythology has sub-types: `hindu`, `norse`, `egypt`, `greek` (pass via `--myth-type`).
+`skillstotraineyes` is the exception: `enabled: false` + `standalone: true`, so `run_niche.py` never
+lists it; it has its own entry point and config keys (see "skillstotraineyes" below).
 
 Optional per-niche keys, all defaulted so existing niches are unaffected:
 - `renderer` — `"ffmpeg"` (default) | `"remotion"`
@@ -419,17 +435,76 @@ Optional per-niche keys, all defaulted so existing niches are unaffected:
 
 Switching a niche to Remotion is a `settings.json` edit; no code changes.
 
+**skillstotraineyes (eye-training Reels, `run_skillstotraineyes.py` + `skillstotraineyes/`):**
+Instagram-only, one drill per Reel, 15-30s, drawn procedurally. **Generation is independent of the
+story pipeline** (no `script_gen`, image stage, `scene_timing`, `renderer_dispatch`, `run_niche.py`);
+**publish and state are shared** (`videos` table, `pipeline/publisher.py`, `upload_schedule`, Drive
+`pending/` manifests, the `scheduled-upload.yml` cron). Wording is "eye exercise for fun" — never
+medical claims.
+- `sim.py` — deterministic numpy physics. Each ball has a stable id (the tracking target is an
+  id, not a colour, so recolouring mid-flight is safe). Circular arena, wall reflection,
+  equal-mass elastic ball-ball collisions **plus positional push-apart and a few relaxation
+  passes** — a single pass leaves ~1px overlap in dense clusters. Ball count 2..10 enforced.
+- `drills.py` — 6 seeded templates: `tracking` (red ball), `pursuit_dual`, `figure8`, `saccade`,
+  `peripheral`, `search`. A drill is data + `ops(frame)` returning draw ops; no pixels. Body caps
+  keep every drill under 30s (saccade once hit 31.5s). `tracking` re-seeds until the target is
+  ≥ 3 radii from every other ball at the reveal, so the answer is unambiguous.
+  `pick_family()` never repeats the previous family; `too_close()` is the uniqueness gate
+  (identical key params to a recent same-family drill → re-seed, up to 20 times).
+- `renderer.py` — Pillow frames → ffmpeg `rawvideo` stdin (~40 ms/frame, ~15-20s per video).
+  Circles are pasted from cached supersampled masks (anti-aliased without 4x per-frame cost).
+  Text is wrapped to 880px and kept above y=1630 (Instagram's bottom UI band). Mixes bed +
+  voiceover lines + reveal chime in the same ffmpeg pass; audio length == video length.
+- `wording.py` — LLM (`llm_router.call_llm`) writes only hook / question / caption. Output is
+  untrusted: length-capped, screened by a medical-claim regex (`cure`, `improve`, `eyesight`, ...),
+  compared to recent wording; a failing field falls back to the drill default, a dead LLM returns
+  `{}`. The disclaimer (`niche.disclaimer`) is appended in code, never by the LLM.
+- Audio reuses `pipeline/horror_audio.build_ambience` (bed pool `musicbox`) and
+  `pipeline/tts.synthesize` per line (voiceover mode, Edge `en-US-AriaNeural`). **Levels are
+  measured, not guessed:** `BED_VOLUME` 0.9 puts the bed near -27 dB RMS (below ~-29 dBFS a bed is
+  inaudible on a phone); the chime is a lavfi `sine` (-18 dBFS source) so `CHIME_VOLUME` is 3.0 to
+  land ~10 dB over the bed. At the original 0.45 / 1.6 both were effectively inaudible.
+- Niche config (`settings.json`): `enabled: false`, `standalone`, `publish_platforms`
+  (`["instagram"]`), `audio_modes` (`muted` | `voiceover`, picked by seed), `bed_pool`,
+  `disclaimer`, `hashtags`, `tts`.
+- **Account routing (`social_config.json`, `scripts/upload_all_platforms.py`):** account
+  `skillstotraineyes_ig` has `"exclusive": true`. `_get_accounts_for_platform(platform, cfg,
+  niche_id)` gives an exclusive account only to its own niche, and that niche posts to **no
+  other account on any platform**. Without this, `upload_all()` posts every video to every
+  enabled account and eye Reels would land on the story IG/FB accounts (and story videos on the
+  eye account); a batch script that schedules an eye video on YouTube would even fall back to
+  `mythology_yt`. Non-exclusive accounts behave exactly as before. `run_scheduled_upload.py`
+  passes `manifest["niche_id"]` through.
+- `schedule_video()` takes optional `title` / `caption` / `hashtags` and writes them into the
+  manifest (story niches leave them empty). Without this the disclaimer would not ship.
+- Credentials: `credentials/skillstotraineyes_ig.json` via `scripts/instagram_auth_setup.py
+  skillstotraineyes_ig`; keys `access_token`, `ig_user_id`, `app_id`, `app_secret`. The token
+  lasts 60 days — re-run the script and re-set the `SKILLSTOTRAINEYES_IG_CREDENTIALS` secret
+  (`gh secret set SKILLSTOTRAINEYES_IG_CREDENTIALS < credentials/skillstotraineyes_ig.json`)
+  before expiry; CI's copy does not persist the local auto-refresh. If several IG accounts share
+  the token, pick the one labelled Skillstotraineyes in the menu and confirm `ig_user_id` in the
+  saved file (the menu branch once returned name/id swapped — fixed).
+- Known limits: `engagement_tracker.py` reads one `INSTAGRAM_ACCESS_TOKEN`, so eye Reels' stats
+  are not fetched and adaptive scheduling will not learn for this niche. `--no-publish` leaves the
+  video `assembled`, and `scripts/schedule_all_platforms.py` picks up every `assembled` video —
+  routing makes that safe, but delete or publish such rows deliberately.
+- Tests: `tests/test_skillstotraineyes_{sim,drills,flow}.py` (`-m slow` covers the real render,
+  ffprobe 1080x1920/30fps, audio == video length). Determinism is asserted on sim state, not
+  pixels (Pillow anti-aliasing varies across versions).
+
 **Config:** `config.py` merges `.env` (API keys) and `settings.json` (all other tunables)
 into a single `cfg` singleton. `settings.json` controls video dimensions, TTS voices,
 LLM fallback order, niche definitions, and image library settings.
 
 **Database (`output/db/agent.db`):** SQLite, initialized by `db/init_db.py`. Key tables:
 - `videos` — one row per video. Real happy path is
-  `queued → bg_ready → voice_ready → assembled → sent → approved`.
-  (`screened` is written only on the `--dry-run` path and is a dead end; `posted` is never set
-  from Python. Also valid: `rejected`, `permanently_rejected`, `waiting_quota`.)
+  `queued → bg_ready → voice_ready → assembled → approved` (`sent` is never written — approval is
+  automatic in `publish()`). `screened` is written only on the `--dry-run` path and is a dead end;
+  `posted` is never set from Python. Also valid: `rejected`, `permanently_rejected`,
+  `waiting_quota`. `run_skillstotraineyes.py` uses the same lifecycle; its `variation_params` JSON
+  holds seed, family, params key, wording and audio mode (the uniqueness gate reads it).
 - `decisions` — all script and routing decisions logged with reasoning
-- `feedback` — manual verdicts from Telegram review (good/bad + tags)
+- `feedback` — verdicts (good/bad + tags); no longer fed by a live Telegram review step
 - `quota_usage` — daily LLM quota tracking per provider (groq, cerebras)
 - `quota_reset_log` — tracks when quota was last reset per (provider, interval)
 - `image_library` — user-provided images with Gemini Vision metadata
@@ -478,7 +553,15 @@ remotion-scary/         — Remotion project (Node). Procedural horror video ren
     Atmosphere.tsx        — fog / grain / vignette / flicker backdrop
     templates/            — Hook, Line, Impact, Reveal, Scare, End
 
+skillstotraineyes/      — eye-training Reels (standalone niche; see section above)
+  sim.py                  — deterministic ball physics
+  drills.py               — 6 seeded drill templates + family rotation + uniqueness gate
+  renderer.py             — Pillow frames → ffmpeg, mixes bed/voice/chime
+  wording.py              — LLM hook/question/caption with claim screening
+run_skillstotraineyes.py — entry point for the above
+
 pipeline/
+  publisher.py          — approve + Drive upload + schedule + Telegram FYI (shared by both entry points)
   script_gen.py         — LLM script generation (schema-driven per niche)
   renderer_dispatch.py  — picks ffmpeg vs remotion per niche
   remotion_renderer.py  — props builder + shot planner + Remotion CLI driver
@@ -541,5 +624,5 @@ feedback/
   parser.py                   — parse Telegram feedback into structured tags
 
 worker.py                     — background worker for pipeline execution
-wait_for_review.py            — poll for Telegram review verdict
+wait_for_review.py            — poll for Telegram review verdict (legacy; not on the current path)
 ```

@@ -4,6 +4,8 @@ Prompt-driven pipeline: pick a niche + optional story seed → produces a 90-180
 
 **Niches:** Mythology · Scary Stories · Heists · Space & Science · AI & Tech Tools · Finance Facts (add more in `settings.json`, no code changes)
 
+**Also:** Eye Training Drills (`skillstotraineyes`) — a separate, standalone generator for Instagram eye-exercise Reels. See [Eye-training Reels](#eye-training-reels-skillstotraineyes).
+
 ---
 
 ## How it works (plain English)
@@ -26,11 +28,11 @@ If enabled, a chanting/meditation background track is mixed in at low volume.
 **Step 6 — Video is assembled**
 ffmpeg applies a slow Ken Burns pan/zoom to each image, concatenates them in scene order, burns captions at the bottom, and mixes in audio. Output: 9:16 portrait MP4 for TikTok/Reels/Shorts.
 
-**Step 7 — Video goes to Telegram for review**
-The finished video is sent to a Telegram bot. You watch it, tap good/bad. The verdict is saved alongside all generation decisions for later analysis.
+**Step 7 — Video is auto-approved**
+There is no manual review gate. The video is marked approved and a Telegram message is sent as an FYI only — nothing waits on it. Content safety is enforced upstream (image critic, no-humans prompt rules).
 
 **Step 8 — Approved videos are scheduled for upload**
-After approval, the video is uploaded to Google Drive, the next platform is picked (YouTube / Instagram / Facebook, round-robin per niche), an optimal upload time is selected using engagement data, and a schedule manifest is written to Drive. A GitHub Actions workflow polls for due manifests and publishes the video at the scheduled time.
+The video is uploaded to Google Drive, the next platform is picked (YouTube / Instagram / Facebook, round-robin per niche), an optimal upload time is selected using engagement data, and a schedule manifest is written to Drive. A GitHub Actions workflow polls for due manifests and publishes the video at the scheduled time.
 
 **Step 9 — Engagement is tracked**
 A daily GitHub Actions cron fetches view/like counts from platform APIs for recent uploads and updates performance data. After enough samples, the scheduler adapts upload times to maximize engagement.
@@ -157,6 +159,33 @@ python run_niche.py mythology --myth-type greek
 
 ---
 
+## Eye-training Reels (skillstotraineyes)
+
+A separate generator, independent of the story pipeline: short (15-30s) Instagram Reels, one eye-exercise
+drill each, drawn procedurally with Python physics. No images, no story script. Six drill families:
+red-ball tracking, dual-dot pursuit, figure-8 pursuit, saccade grid, peripheral flash, scatter search.
+Publishing reuses the shared scheduler, but only to the dedicated `skillstotraineyes` Instagram account.
+
+```bash
+python run_skillstotraineyes.py                              # random family, publish to Instagram
+python run_skillstotraineyes.py --family tracking --seed 7   # reproducible
+python run_skillstotraineyes.py --dry-run                    # build + validate the drill only
+python run_skillstotraineyes.py --no-publish                 # render only (lands in output/skillstotraineyes/video/)
+python run_skillstotraineyes.py --no-llm --audio-mode muted  # default wording, no voiceover
+```
+
+Each video: a seeded drill, an ambient bed, optional voiceover, a reveal chime, then a closing question and
+"Follow for more". An LLM writes only the hook, question and caption (screened for medical claims, with safe
+fallbacks); the disclaimer is added in code. Renders in about 15-20 seconds.
+
+**One-time setup for publishing:** create the Instagram credentials with
+`python scripts/instagram_auth_setup.py skillstotraineyes_ig` (the account must be a Creator/Business account
+linked to a Facebook Page) and add them as the GitHub secret `SKILLSTOTRAINEYES_IG_CREDENTIALS`.
+The token lasts 60 days. Design details, audio levels, account-routing rules and known limits are in
+`CLAUDE.md` under "skillstotraineyes".
+
+---
+
 ## Configuration
 
 All tunables are in `settings.json`:
@@ -210,6 +239,8 @@ Limits are configured in `quota.json`. Edit `daily_limit` to adjust.
 
 ```
 run_niche.py              — main entry point, orchestrates the full pipeline
+run_skillstotraineyes.py  — entry point for eye-training Reels (standalone)
+skillstotraineyes/        — sim.py (physics), drills.py (6 templates), renderer.py, wording.py
 config.py                 — merges .env + settings.json into cfg singleton
 settings.json             — all tunables (niches, video config, LLM order, library settings)
 quota.json                — LLM provider daily limits and reset schedules
@@ -218,6 +249,7 @@ ingest_library.py         — CLI to analyze and store deity images into the lib
 list_library.py           — CLI to inspect library coverage by deity
 
 pipeline/
+  publisher.py            — approve + Drive upload + schedule + Telegram FYI (shared)
   script_gen.py           — LLM story script generation (narration + image prompt per scene)
   image_library.py        — image ingestion, FTS search, deity-name search, retrieval
   deity_map.py            — central deity registry: maps prompts to best library images
@@ -243,7 +275,7 @@ pipeline/
   prompt_refiner.py       — LLM image prompt refinement (optional)
 
 review/
-  telegram_bot.py         — send finished video for human review via Telegram
+  telegram_bot.py         — Telegram FYI notification (no review gate)
 
 scripts/
   scheduler_setup.py      — verify scheduler prerequisites
@@ -282,11 +314,10 @@ queued
   → bg_ready        images selected/generated
   → voice_ready     TTS audio generated
   → assembled       ffmpeg assembled mp4
-  → screened        automated quality prescreen (optional)
-  → sent            sent to Telegram
-  → approved        human approved via Telegram
-    → posted        uploaded to platform
-  → rejected        human rejected
+  → screened        --dry-run only; a dead end
+  → approved        auto-approved by publish() (no review gate; 'sent' is never written)
+    → posted        never set from Python
+  → rejected        pipeline failed
     → waiting_quota   retry queued pending quota
     → permanently_rejected   rejected after max retries
 ```
@@ -295,4 +326,4 @@ queued
 
 ## Feedback loop
 
-Manual review via Telegram (good/bad verdict). Verdicts stored in SQLite alongside all generation decisions — niche, story seed, LLM model used, image matched. After a batch, query `output/db/agent.db` to find which combinations produce the best results.
+Verdicts (good/bad) are stored in SQLite alongside all generation decisions — niche, story seed, LLM model used, image matched. After a batch, query `output/db/agent.db` to find which combinations produce the best results.
