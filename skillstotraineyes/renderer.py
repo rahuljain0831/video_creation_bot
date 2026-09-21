@@ -114,6 +114,9 @@ def draw_frame(ops: list, base: Image.Image) -> Image.Image:
         elif kind == "square":
             _, x, y, half, col = op
             dr.rectangle([x - half, y - half, x + half, y + half], fill=col)
+        elif kind == "rect":
+            _, x, y, hw, hh, col = op
+            dr.rectangle([x - hw, y - hh, x + hw, y + hh], fill=col)
         elif kind == "text":
             _, s, x, y, size, col = op
             font = _font(int(size))

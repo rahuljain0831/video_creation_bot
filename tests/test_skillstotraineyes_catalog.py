@@ -93,6 +93,13 @@ DERIVED = {
                    "radius": (["radius"], _same)},
     "search": {"density": (["cols", "rows"], tuple), "look_s": (["look"], _same)},
 }
+_PATH_KNOBS = {"tempo": (["period"], lambda v: (round(6.5 / v, 3),)),
+               "guide": (["guide"], _same), "occlude": (["occlude"], _same),
+               "ghosts": (["ghosts"], _same), "shift": (["shift"], _same)}
+for _id in ("slow_pursuit", "sine_pursuit", "triangle_pursuit", "zigzag_pursuit",
+            "predictive_pursuit", "spatial_shift_pursuit", "ghosting_pursuit",
+            "vertical_pursuit"):
+    DERIVED[_id] = {n: _PATH_KNOBS[n] for n in knob_names(_id)}
 
 
 @pytest.fixture
@@ -184,3 +191,62 @@ def test_a_preset_fires_sometimes_and_pins_its_own_level():
 
 def test_an_explicit_level_beats_a_preset():
     assert all(build("tracking", s, level="easy").level == "easy" for s in range(80))
+
+
+PATH_DRILLS = ["slow_pursuit", "sine_pursuit", "triangle_pursuit", "zigzag_pursuit",
+               "predictive_pursuit", "spatial_shift_pursuit", "ghosting_pursuit",
+               "vertical_pursuit"]
+
+
+def test_path_drills_are_in_the_catalog():
+    assert set(PATH_DRILLS) <= set(FAMILIES)
+
+
+@pytest.mark.parametrize("drill_id", PATH_DRILLS)
+@pytest.mark.parametrize("level", LEVELS)
+def test_path_drill_stays_on_screen(drill_id, level):
+    from skillstotraineyes.drills import H, SAFE_BOTTOM, W
+    d = build(drill_id, 4, level=level)
+    for f in range(0, d.frames, 5):
+        for op in d.ops(f):
+            if op[0] == "text":
+                assert op[4] * 0.6 + op[3] < SAFE_BOTTOM
+            else:
+                x, y = op[1], op[2]
+                assert 0 < x < W and 0 < y < H, f"{drill_id}/{level}: {op}"
+
+
+@pytest.mark.parametrize("drill_id", PATH_DRILLS)
+def test_visible_guide_draws_dots_hidden_does_not(drill_id):
+    from skillstotraineyes.drills import GUIDE_R
+    vis = build(drill_id, 4, level="easy")
+    if vis.params.get("guide") != "visible":
+        pytest.skip("this seed did not roll a visible guide")
+    mid = vis.frames // 2
+    guide_dots = [op for op in vis.ops(mid) if op[0] == "disc" and op[3] == GUIDE_R]
+    assert len(guide_dots) > 30, "a visible guide must actually be drawn"
+
+
+def test_occluder_hides_the_dot():
+    """Predictive Pursuit: the target must genuinely vanish behind the band."""
+    from skillstotraineyes.drills import DOT_R
+    d = build("predictive_pursuit", 4, level="god")
+    assert d.params["occlude"] >= 1
+    assert any(op[0] == "rect" for op in d.ops(d.frames // 2))
+    body = range(int(3.0 * d.fps), d.frames - int(4.0 * d.fps))
+    hidden = [f for f in body if not any(op[0] == "disc" and op[3] == DOT_R for op in d.ops(f))]
+    assert hidden, "the dot never went behind the occluder"
+
+
+def test_ghosting_draws_trail_dots():
+    d = build("ghosting_pursuit", 4, level="god")
+    assert d.params["ghosts"] >= 1
+    mid = d.frames // 2
+    assert len([op for op in d.ops(mid) if op[0] == "disc"]) > d.params["ghosts"]
+
+
+@pytest.mark.parametrize("drill_id", PATH_DRILLS)
+def test_path_drill_is_deterministic(drill_id):
+    a, b = build(drill_id, 9, level="hard"), build(drill_id, 9, level="hard")
+    assert a.params == b.params
+    assert all(a.ops(f) == b.ops(f) for f in range(0, a.frames, 11))

@@ -62,6 +62,63 @@
       "knobs": {},
       "knob_names": ["density", "look_s"],
       "presets": []
+    },
+    {
+      "id": "slow_pursuit", "name": "Constant Slow Pursuit",
+      "about": "A dot creeps along a visible Lissajous curve. Stay glued to it without blinking ahead.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "lissajous"},
+      "knob_names": ["tempo", "guide"], "presets": []
+    },
+    {
+      "id": "sine_pursuit", "name": "Sine-Wave Pursuit",
+      "about": "Track a dot oscillating along a horizontal sine wave guide line.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "sine"},
+      "knob_names": ["tempo", "guide"], "presets": []
+    },
+    {
+      "id": "triangle_pursuit", "name": "Triangular Pursuit",
+      "about": "Follow the dot around a triangle. The corners are where eyes fall behind.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "triangle"},
+      "knob_names": ["tempo", "guide"], "presets": []
+    },
+    {
+      "id": "zigzag_pursuit", "name": "Zig-Zag Path Pursuit",
+      "about": "Track the dot along a multi-segment zig-zag. Sharp reversals, no warning.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "zigzag"},
+      "knob_names": ["tempo", "guide"], "presets": []
+    },
+    {
+      "id": "predictive_pursuit", "name": "Predictive Pursuit",
+      "about": "The dot slips behind a band and comes out the other side. Your eyes have to guess where.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "lemniscate"},
+      "knob_names": ["tempo", "occlude"],
+      "presets": [{"name": "Blind Run", "level": "god", "knobs": {"tempo": 2.4, "occlude": 2}}]
+    },
+    {
+      "id": "spatial_shift_pursuit", "name": "Spatial-Shift Pursuit",
+      "about": "Track a dot that keeps changing speed on the same path. Rhythm will not save you.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "sine"},
+      "knob_names": ["tempo", "shift", "guide"], "presets": []
+    },
+    {
+      "id": "ghosting_pursuit", "name": "Ghosting Suppress Pursuit",
+      "about": "Trails follow the dot. Lock onto the real one and let the ghosts go.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "lissajous"},
+      "knob_names": ["tempo", "ghosts"], "presets": []
+    },
+    {
+      "id": "vertical_pursuit", "name": "Vertical Tracking",
+      "about": "Stepped moves: a horizontal slide, then a vertical snap. Follow both.",
+      "builder": "path_pursuit", "mode": "watch",
+      "knobs": {"path": "steps"},
+      "knob_names": ["tempo", "guide"], "presets": []
     }
   ]
 }

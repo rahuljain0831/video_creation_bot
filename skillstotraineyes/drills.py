@@ -497,6 +497,146 @@ def search(seed: int, text: dict | None = None, level: str | None = None,
                  level=level or "")
 
 
+DOT_R = 34          # the pursued target
+GUIDE_R = 5         # one dot of the drawn guide line
+GUIDE_SAMPLES = 140
+AX, AY = 410, 450   # path half-extents; CY+AY = 1350, clear of SAFE_BOTTOM
+
+
+def _tri(u: float) -> float:
+    """Triangle wave, period 1, range [-1, 1]. Sweeps without a wrap-around jump."""
+    u = u % 1.0
+    return 4 * u - 1 if u < 0.5 else 3 - 4 * u
+
+
+def _make_path(kind: str, rng: random.Random, period: float):
+    """A path as f(t) -> (x, y), repeating every `period` seconds."""
+    tau = 2 * math.pi
+
+    if kind == "sine":
+        cycles = rng.choice([2, 3, 4])
+        return lambda t: (CX + AX * _tri(t / period),
+                          CY + AY * math.sin(tau * cycles * t / period))
+    if kind == "zigzag":
+        cycles = rng.choice([3, 4, 5])
+        return lambda t: (CX + AX * _tri(t / period),
+                          CY + AY * _tri(cycles * t / period))
+    if kind == "triangle":
+        pts = [(CX, CY - AY), (CX + AX, CY + AY), (CX - AX, CY + AY)]
+
+        def tri_path(t):
+            u = (t / period) % 1.0 * 3
+            i = int(u) % 3
+            a, b = pts[i], pts[(i + 1) % 3]
+            k = u - int(u)
+            return (a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k)
+        return tri_path
+    if kind == "lemniscate":
+        return lambda t: (CX + AX * math.sin(tau * t / period),
+                          CY + AY * math.sin(tau * t / period) * math.cos(tau * t / period) * 2)
+    if kind == "lissajous":
+        a, b = rng.choice([(2, 3), (3, 4), (1, 2)])
+        ph = rng.uniform(0, math.pi)
+        return lambda t: (CX + AX * math.sin(a * tau * t / period),
+                          CY + AY * math.sin(b * tau * t / period + ph))
+    if kind == "steps":
+        n = rng.choice([4, 6])
+
+        def step_path(t):
+            u = (t / period) % 1.0
+            k = int(u * n)
+            slide = min(1.0, (u * n - k) * 1.6)   # slide, then hold before the snap
+            return (CX + AX * _tri((k + slide) / n),
+                    CY + AY * (2 * (k / (n - 1)) - 1))
+        return step_path
+    raise ValueError(f"unknown path {kind!r}")
+
+
+_PATHS = ("sine", "zigzag", "triangle", "lemniscate", "lissajous", "steps")
+
+
+def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
+                 entry_cfg: dict | None = None) -> Drill:
+    """
+    One dot on a named path. Covers every pursuit drill in the catalog: the path
+    is pinned per entry, and the level rolls how fast it moves, whether the guide
+    line is drawn, whether it hides behind an occluder, and how many ghost trails
+    compete with it.
+    """
+    entry_cfg = entry_cfg or entry("slow_pursuit")
+    rng = random.Random(seed)
+    accent = rng.choice(ACCENTS)
+
+    k = {"tempo": 1.0, "guide": "visible", "occlude": 0, "ghosts": 0, "shift": 0.0,
+         **entry_cfg["knobs"]}
+    if level:
+        k.update(_knobs(entry_cfg, level, rng))
+
+    kind = k.get("path", "sine")
+    period = round(6.5 / float(k["tempo"]), 3)
+    body = rng.choice([12, 15, 18])
+    hook_until = 3.0
+    t_q = hook_until + body
+    t_cta = t_q + 2.0
+    total = t_cta + 2.5
+
+    path = _make_path(kind, rng, period)
+    shift = float(k["shift"])
+    if shift:
+        # Spatial-Shift Pursuit: the tempo jumps at each period boundary, so the
+        # dot's speed stops being predictable without leaving the path.
+        base = path
+        jumps = [1.0 + shift * rng.uniform(-1, 1) for _ in range(24)]
+
+        def path(t, _base=base, _j=jumps):          # noqa: F811
+            i = min(int(t / period), len(_j) - 1)
+            warped = sum(_j[:i]) * period + (t - i * period) * _j[i]
+            return _base(warped)
+
+    guide = k["guide"]
+    guide_col = {"visible": (120, 128, 150), "faint": (44, 48, 62)}.get(guide)
+    guide_dots = ([("disc", *path(j * period / GUIDE_SAMPLES), GUIDE_R, guide_col)
+                   for j in range(GUIDE_SAMPLES)] if guide_col else [])
+    # ponytail: the guide is re-pasted every frame. Bake it into the renderer's
+    # base image if drills.py ever costs more than ~40ms/frame.
+
+    ghosts = int(k["ghosts"])
+    bands = [(CY - 180, 150), (CY + 240, 130)][:int(k["occlude"])]
+    hook = _text(text, "hook", "Follow the dot with your eyes")
+    question = _text(text, "question", "Did you keep up?")
+    cta = _text(text, "cta", DEFAULT_TEXT["cta"])
+    badge = _badge(level)
+
+    def ops(f: int) -> list:
+        t = f / FPS
+        out = [("dotted", CX, CY, 470, DIM)] + list(guide_dots)
+        for by, bh in bands:
+            out.append(("rect", CX, by, 470, bh, BG))
+        if hook_until - 0.5 <= t < t_q:
+            tm = t - (hook_until - 0.5)
+            for j in range(ghosts, 0, -1):
+                gx, gy = path(max(0.0, tm - j * 0.07))
+                fade = 0.45 - j * 0.04
+                out.append(("disc", gx, gy, 24,
+                            tuple(max(0, int(c * fade)) for c in accent)))
+            x, y = path(tm)
+            if not any(by - bh <= y <= by + bh for by, bh in bands):
+                out.append(("disc", x, y, DOT_R, accent))
+        elif t < hook_until - 0.5:
+            x, y = path(0.0)
+            out.append(("disc", x, y, DOT_R, accent))
+        return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta,
+                               badge=badge)
+
+    return Drill(entry_cfg["id"], total, ops,
+                 {"family": entry_cfg["id"], "level": level or "",
+                  "path": kind, "period": period, "guide": guide,
+                  "occlude": len(bands), "ghosts": ghosts,
+                  "shift": shift, "body": body},
+                 voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
+                 level=level or "")
+
+
 BUILDERS = {
     "tracking": tracking,
     "pursuit_dual": pursuit_dual,
@@ -504,6 +644,7 @@ BUILDERS = {
     "saccade": saccade,
     "peripheral": peripheral,
     "search": search,
+    "path_pursuit": path_pursuit,
 }
 
 
