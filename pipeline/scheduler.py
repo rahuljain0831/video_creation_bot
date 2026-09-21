@@ -231,6 +231,7 @@ def schedule_video(
     title: str | None = None,
     caption: str = "",
     hashtags: list[str] | None = None,
+    media_type: str = "video",
 ) -> dict:
     """
     Full scheduling flow for a video:
@@ -247,6 +248,9 @@ def schedule_video(
     title / caption / hashtags: written into the manifest as-is. Story niches
     leave them unset (title is then read from the script JSON, caption empty);
     niches with no script JSON pass their own.
+
+    media_type: "video" (default) or "image" for a feed photo. Written into the
+    manifest; run_scheduled_upload.py routes the upload on it.
     """
     if force_platform is not None:
         if force_platform not in _PLATFORMS:
@@ -303,6 +307,7 @@ def schedule_video(
             "caption": caption,
             "hashtags": hashtags or [],
             "retry_count": 0,
+            "media_type": media_type,
         }
         _tmp_dir = tempfile.mkdtemp()
         _tmp = Path(_tmp_dir) / f"{schedule_id}_schedule.json"

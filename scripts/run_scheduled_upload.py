@@ -136,12 +136,16 @@ def process_schedule(manifest, manifest_drive_id, service):
     drive_file_id = manifest["drive_file_id"]
     title = manifest.get("title", "Untitled")
 
-    log.info("Processing schedule_id=%d platform=%s title=%s", schedule_id, platform, title)
+    media_type = manifest.get("media_type", "video")
+    suffix = ".jpg" if media_type == "image" else ".mp4"
+
+    log.info("Processing schedule_id=%d platform=%s media=%s title=%s",
+             schedule_id, platform, media_type, title)
 
     tmp_dir = Path(tempfile.mkdtemp())
-    video_path = tmp_dir / "video.mp4"
+    video_path = tmp_dir / f"media{suffix}"
     download_from_drive(drive_file_id, video_path)
-    log.info("Downloaded video: %s (%d bytes)", video_path, video_path.stat().st_size)
+    log.info("Downloaded media: %s (%d bytes)", video_path, video_path.stat().st_size)
 
     last_error = None
     upload_results = []
@@ -155,6 +159,7 @@ def process_schedule(manifest, manifest_drive_id, service):
                 hashtags=manifest.get("hashtags", []),
                 platforms_filter=[platform],
                 niche_id=manifest.get("niche_id"),
+                media_type=media_type,
             )
             last_error = None
             break   # success

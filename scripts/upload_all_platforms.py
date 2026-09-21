@@ -106,8 +106,12 @@ def _get_accounts_for_platform(
 def _upload_youtube(
     video_path: Path, title: str, description: str,
     hashtags: list[str], account: dict, dry_run: bool,
+    media_type: str = "video",
 ) -> dict:
     """Upload to YouTube, return result dict."""
+    if media_type != "video":
+        return {"platform": "youtube", "account": account["account_id"],
+                "status": "error", "error": "youtube takes video only"}
     creds_file = ROOT / account["credentials_file"]
     if not creds_file.exists():
         return {"platform": "youtube", "account": account["account_id"],
@@ -138,8 +142,9 @@ def _upload_youtube(
 def _upload_instagram(
     video_path: Path, title: str, description: str,
     hashtags: list[str], account: dict, dry_run: bool,
+    media_type: str = "video",
 ) -> dict:
-    """Upload to Instagram as a Reel, return result dict."""
+    """Upload to Instagram as a Reel (or a feed photo when media_type='image')."""
     creds_file = ROOT / account["credentials_file"]
     if not creds_file.exists():
         return {"platform": "instagram", "account": account["account_id"],
@@ -149,18 +154,23 @@ def _upload_instagram(
         return {"platform": "instagram", "account": account["account_id"],
                 "status": "dry_run", "credentials": str(creds_file)}
 
-    from pipeline.instagram_upload import upload_reel
     # Instagram uses caption (title + description combined)
     caption = title
     if description and description != title:
         caption = f"{title}\n\n{description}"
 
-    media_id = upload_reel(
-        video_path=video_path,
-        caption=caption,
-        hashtags=hashtags,
-        credentials_file=creds_file,
-    )
+    if media_type == "image":
+        from pipeline.instagram_upload import upload_image_post
+        media_id = upload_image_post(
+            image_path=video_path, caption=caption,
+            hashtags=hashtags, credentials_file=creds_file,
+        )
+    else:
+        from pipeline.instagram_upload import upload_reel
+        media_id = upload_reel(
+            video_path=video_path, caption=caption,
+            hashtags=hashtags, credentials_file=creds_file,
+        )
     return {
         "platform": "instagram",
         "account": account["account_id"],
@@ -172,8 +182,12 @@ def _upload_instagram(
 def _upload_facebook(
     video_path: Path, title: str, description: str,
     hashtags: list[str], account: dict, dry_run: bool,
+    media_type: str = "video",
 ) -> dict:
     """Upload to Facebook Page, return result dict."""
+    if media_type != "video":
+        return {"platform": "facebook", "account": account["account_id"],
+                "status": "error", "error": "facebook takes video only"}
     creds_file = ROOT / account["credentials_file"]
     if not creds_file.exists():
         return {"platform": "facebook", "account": account["account_id"],
@@ -214,6 +228,7 @@ def upload_all(
     platforms_filter: list[str] | None = None,
     dry_run: bool = False,
     niche_id: str | None = None,
+    media_type: str = "video",
 ) -> list[dict]:
     """
     Upload a video to all enabled platforms.
@@ -227,6 +242,7 @@ def upload_all(
         dry_run: If True, show what would happen without uploading
         niche_id: Routes to an exclusive account for that niche, if one exists
                   (see _get_accounts_for_platform)
+        media_type: "video" (default, a Reel) or "image" (an Instagram feed photo).
 
     Returns:
         List of result dicts, one per account attempted
@@ -258,7 +274,7 @@ def upload_all(
             try:
                 result = uploader(
                     video_path, title, full_description,
-                    hashtags, account, dry_run,
+                    hashtags, account, dry_run, media_type,
                 )
                 results.append(result)
             except Exception as exc:

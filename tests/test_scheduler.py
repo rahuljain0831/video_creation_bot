@@ -128,3 +128,116 @@ def test_pick_optimal_time_avoids_conflicts(monkeypatch):
     diff = abs((result - blocked_dt).total_seconds() / 60)
     assert diff >= 30, f"Got slot {result} too close to blocked {blocked_dt}"
 
+
+
+# ---------------------------------------------------------------------------
+# media_type routing (image posts)
+# ---------------------------------------------------------------------------
+
+def _ig_setup(monkeypatch, tmp_path, media_name):
+    """One instagram account whose credentials file really exists under tmp_path."""
+    from scripts import upload_all_platforms as uap
+
+    (tmp_path / "creds.json").write_text("{}")
+    media = tmp_path / media_name
+    media.write_bytes(b"\x00")
+    monkeypatch.setattr(uap, "ROOT", tmp_path)
+    monkeypatch.setattr(uap, "load_social_config", lambda: {
+        "platforms": {"instagram": {"enabled": True}},
+        "accounts": [{"account_id": "ig", "platform": "instagram", "enabled": True,
+                      "credentials_file": "creds.json"}],
+    })
+    calls = []
+
+    def fake_image(**kw):
+        calls.append(("image", kw))
+        return "m1"
+
+    def fake_reel(**kw):
+        calls.append(("reel", kw))
+        return "m2"
+
+    import pipeline.instagram_upload as ig
+    monkeypatch.setattr(ig, "upload_image_post", fake_image)
+    monkeypatch.setattr(ig, "upload_reel", fake_reel)
+    return uap, media, calls
+
+
+def test_upload_all_routes_an_image_to_the_feed(monkeypatch, tmp_path):
+    uap, img, calls = _ig_setup(monkeypatch, tmp_path, "scene.jpg")
+    out = uap.upload_all(video_path=img, title="t", platforms_filter=["instagram"],
+                         media_type="image")
+    assert [c[0] for c in calls] == ["image"]
+    assert calls[0][1]["image_path"] == img
+    assert out[0]["status"] == "success"
+
+
+def test_upload_all_still_defaults_to_a_reel(monkeypatch, tmp_path):
+    uap, vid, calls = _ig_setup(monkeypatch, tmp_path, "v.mp4")
+    uap.upload_all(video_path=vid, title="t", platforms_filter=["instagram"])
+    assert [c[0] for c in calls] == ["reel"]
+
+
+@pytest.mark.parametrize("name", ["_upload_youtube", "_upload_facebook"])
+def test_video_only_platforms_reject_an_image(name):
+    from scripts import upload_all_platforms as uap
+
+    res = getattr(uap, name)(Path("x.jpg"), "t", "d", [], {"account_id": "a"}, False, "image")
+    assert res["status"] == "error" and "video only" in res["error"]
+
+
+def _captured_manifest(monkeypatch, **kw):
+    import json
+    import pipeline.drive_storage as ds
+    from pipeline.scheduler import schedule_video
+
+    _patch_cfg(monkeypatch)
+    seen = {}
+
+    def fake_upload(path, folder_name=None):
+        seen.update(json.loads(Path(path).read_text()))
+        return "id"
+
+    monkeypatch.setattr(ds, "upload_to_drive", fake_upload)
+    conn = make_db()
+    vid = conn.execute("INSERT INTO videos (niche_id) VALUES ('skillstotraineyes')").lastrowid
+    schedule_video(vid, "skillstotraineyes", "f", "m", conn,
+                   force_platform="instagram",
+                   force_time=datetime.now(timezone.utc) + timedelta(days=2),
+                   title="t", caption="c", hashtags=["#x"], **kw)
+    return seen
+
+
+def test_manifest_carries_media_type(monkeypatch):
+    assert _captured_manifest(monkeypatch, media_type="image")["media_type"] == "image"
+    assert _captured_manifest(monkeypatch)["media_type"] == "video"
+
+
+@pytest.mark.parametrize("media_type,suffix", [("image", ".jpg"), ("video", ".mp4")])
+def test_process_schedule_picks_suffix_from_media_type(monkeypatch, media_type, suffix):
+    import pipeline.drive_storage as ds
+    import scripts.run_scheduled_upload as rsu
+    import scripts.upload_all_platforms as uap
+
+    got = {}
+
+    def fake_download(file_id, dest):
+        got["dest"] = Path(dest)
+        Path(dest).write_bytes(b"x")
+
+    def fake_upload_all(**kw):
+        got["media_type"] = kw["media_type"]
+        return []
+
+    monkeypatch.setattr(ds, "download_from_drive", fake_download)
+    monkeypatch.setattr(ds, "move_drive_file", lambda *a, **k: None)
+    monkeypatch.setattr(uap, "upload_all", fake_upload_all)
+    for n in ("_notify_telegram", "_notify_token_alert"):
+        monkeypatch.setattr(rsu, n, lambda *a, **k: None, raising=False)
+    try:
+        rsu.process_schedule({"schedule_id": 1, "platform": "instagram",
+                              "drive_file_id": "f", "media_type": media_type}, "mid", None)
+    except Exception:
+        pass  # post-upload bookkeeping is out of scope; routing was captured above
+    assert got["dest"].suffix == suffix
+    assert got["media_type"] == media_type

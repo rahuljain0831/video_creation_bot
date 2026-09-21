@@ -41,6 +41,7 @@ def publish(
     caption: str = "",
     hashtags: list[str] | None = None,
     notify_text: str = "",
+    media_type: str = "video",
 ) -> list[dict]:
     """
     Mark the video approved, upload it (and its script JSON, if any) to Drive
@@ -50,6 +51,7 @@ def publish(
     schedule_time: 'HH:MM' IST to force; otherwise each platform's slot is
                    appended after the whole pending queue (next_queue_slot).
     title/caption/hashtags: forwarded into the schedule manifest.
+    media_type:    "video" (default) or "image" (Instagram feed photo).
     Returns one schedule_video() summary per platform.
     """
     from pipeline.drive_storage import upload_to_drive
@@ -77,6 +79,7 @@ def publish(
             video_id, niche["id"], drive_file_id, drive_manifest_id, conn,
             force_platform=platform, force_time=platform_time,
             title=title, caption=caption, hashtags=hashtags,
+            media_type=media_type,
         ))
     log.info("Scheduled on %s.", platforms)
 
