@@ -531,6 +531,7 @@ def generate_image(
     seed: int = 0,
     name_suffix: str = "",
     use_notes: bool = True,
+    min_short_edge: int = 0,
 ) -> str:
     """
     Generate one scene image: cloud providers in priority order, then local ComfyUI.
@@ -547,6 +548,8 @@ def generate_image(
         seed:         Provider seed, for reproducible reruns.
         name_suffix:  Appended to the filename stem, e.g. "_b" for a beat's
                       second image.
+        min_short_edge: When > 0, an image whose short edge is smaller is
+                      discarded and the next provider is tried (0 = accept any).
 
     Returns:
         Path to saved image (output_dir/scene_XX<suffix>.<png|jpg|webp>, extension
@@ -634,6 +637,24 @@ def generate_image(
                     output_path.write_bytes(data)
                     log.info("Image gen success: %s (%d bytes, provider=%s)",
                              output_path, len(data), provider["name"])
+
+                    if min_short_edge:
+                        import io
+                        from PIL import Image
+                        with Image.open(io.BytesIO(data)) as im:
+                            short = min(im.size)
+                        if short < min_short_edge:
+                            # A provider's output size is deterministic, so retrying
+                            # it is pointless: strike it off and fall through.
+                            log.warning("Image provider %s returned short edge %dpx (< %d) "
+                                        "— rejecting, trying the next provider",
+                                        provider["name"], short, min_short_edge)
+                            output_path.unlink(missing_ok=True)
+                            dead.add(provider["name"])
+                            last_error = ImageGenError(
+                                f"{provider['name']} returned {short}px short edge, "
+                                f"need {min_short_edge}")
+                            continue
 
                     # Mandatory safety check, always on regardless of quality_gate.
                     from pipeline.image_critic import nsfw_flagged

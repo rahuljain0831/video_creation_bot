@@ -151,6 +151,7 @@ def generate(scene: dict, out_dir, seed: int, niche: dict, cfg=None) -> str:
     raw = generate_image(
         image_prompt=prompt, niche=niche, output_dir=str(out_dir),
         scene_index=0, cfg=cfg, seed=seed, use_notes=False,
+        min_short_edge=MIN_SHORT_EDGE,
     )
     img = Image.open(raw)
     short = min(img.size)

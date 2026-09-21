@@ -121,3 +121,12 @@ def test_import_does_not_load_llm_router_or_image_gen():
             "assert 'config' not in sys.modules")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_generate_asks_the_provider_chain_for_the_minimum_edge(monkeypatch, tmp_path):
+    seen = {}
+    big = tmp_path / "big.png"
+    Image.new("RGB", (1080, 1350), "green").save(big)
+    monkeypatch.setattr(ho, "generate_image", lambda **kw: (seen.update(kw), str(big))[1])
+    ho.generate(SCENE, tmp_path, seed=1, niche={"id": "skillstotraineyes"}, cfg=None)
+    assert seen["min_short_edge"] == ho.MIN_SHORT_EDGE
