@@ -358,16 +358,16 @@ def upload_image_post(
 
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
+    if image_path.suffix.lower() not in (".jpg", ".jpeg"):
+        raise ValueError(f"Instagram feed photos must be JPEG, got {image_path.suffix}")
     if not creds_path.exists():
         raise FileNotFoundError(
             f"Credentials not found: {creds_path}. "
             "Run: python scripts/instagram_auth_setup.py"
         )
-    if image_path.suffix.lower() not in (".jpg", ".jpeg"):
-        raise ValueError(f"Instagram feed photos must be JPEG, got {image_path.suffix}")
 
     if not image_url:
-        image_url = _upload_to_temp_host(image_path, _mime_for(image_path))
+        image_url = _upload_to_temp_host(image_path)
 
     creds = _load_credentials(creds_path)
 

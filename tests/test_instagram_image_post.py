@@ -59,10 +59,82 @@ def test_upload_image_post_publishes(monkeypatch, tmp_path, creds):
     img = tmp_path / "scene.jpg"
     img.write_bytes(b"\xff\xd8\xff\x00")
     monkeypatch.setattr(ig, "_upload_to_temp_host", lambda p, mime=None: "https://x/scene.jpg")
-    monkeypatch.setattr(ig, "_create_media_container", lambda **kw: "c3")
+
+    container_kw = {}
+    def capture_container(**kw):
+        container_kw.update(kw)
+        return "c3"
+    monkeypatch.setattr(ig, "_create_media_container", capture_container)
     monkeypatch.setattr(ig, "_poll_container_status", lambda *a: "FINISHED")
     monkeypatch.setattr(ig, "_publish_container", lambda *a: "media-9")
+
     assert ig.upload_image_post(img, "find it", ["eyes"], credentials_file=creds) == "media-9"
+    assert container_kw["image_url"] == "https://x/scene.jpg"
+    assert container_kw["caption"] == "find it\n\n#eyes"
+    assert container_kw["ig_user_id"] == "123"
+    assert container_kw["access_token"] == "tok"
+    assert "media_type" not in container_kw
+    assert "video_url" not in container_kw
+
+
+def test_hashtags_formatted_with_and_without_hash(monkeypatch, tmp_path, creds):
+    img = tmp_path / "img.jpg"
+    img.write_bytes(b"\xff\xd8")
+    monkeypatch.setattr(ig, "_upload_to_temp_host", lambda p, mime=None: "https://x/img.jpg")
+
+    container_kw = {}
+    monkeypatch.setattr(ig, "_create_media_container",
+                        lambda **kw: (container_kw.update(kw), "c")[1])
+    monkeypatch.setattr(ig, "_poll_container_status", lambda *a: None)
+    monkeypatch.setattr(ig, "_publish_container", lambda *a: "m")
+
+    ig.upload_image_post(img, "test", ["eyes", "#fitness"], credentials_file=creds)
+    assert "#eyes" in container_kw["caption"]
+    assert "#fitness" in container_kw["caption"]
+
+
+def test_caption_truncated_to_2200_chars(monkeypatch, tmp_path, creds):
+    img = tmp_path / "img.jpg"
+    img.write_bytes(b"\xff\xd8")
+    monkeypatch.setattr(ig, "_upload_to_temp_host", lambda p, mime=None: "https://x/img.jpg")
+
+    container_kw = {}
+    monkeypatch.setattr(ig, "_create_media_container",
+                        lambda **kw: (container_kw.update(kw), "c")[1])
+    monkeypatch.setattr(ig, "_poll_container_status", lambda *a: None)
+    monkeypatch.setattr(ig, "_publish_container", lambda *a: "m")
+
+    long_caption = "x" * 2300
+    ig.upload_image_post(img, long_caption, credentials_file=creds)
+    assert len(container_kw["caption"]) == 2200
+    assert container_kw["caption"].endswith("...")
+
+
+def test_upload_image_post_rejects_png_before_checking_credentials(tmp_path):
+    img = tmp_path / "img.png"
+    img.write_bytes(b"\x89PNG")
+    with pytest.raises(ValueError, match="must be JPEG"):
+        ig.upload_image_post(img, "c", credentials_file=tmp_path / "missing.json")
+
+
+def test_upload_image_post_skips_temp_host_when_url_provided(monkeypatch, tmp_path, creds):
+    img = tmp_path / "scene.jpg"
+    img.write_bytes(b"\xff\xd8")
+
+    upload_calls = []
+    monkeypatch.setattr(ig, "_upload_to_temp_host",
+                        lambda p, mime=None: upload_calls.append(p) or "should-not-happen")
+
+    container_kw = {}
+    monkeypatch.setattr(ig, "_create_media_container",
+                        lambda **kw: (container_kw.update(kw), "c")[1])
+    monkeypatch.setattr(ig, "_poll_container_status", lambda *a: None)
+    monkeypatch.setattr(ig, "_publish_container", lambda *a: "m")
+
+    ig.upload_image_post(img, "c", credentials_file=creds,
+                         image_url="https://prehosted.example.com/img.jpg")
+    assert container_kw["image_url"] == "https://prehosted.example.com/img.jpg"
+    assert len(upload_calls) == 0
 
 
 def test_upload_image_post_rejects_a_missing_file(tmp_path, creds):
