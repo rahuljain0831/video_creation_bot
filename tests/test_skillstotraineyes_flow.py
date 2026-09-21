@@ -265,3 +265,13 @@ def test_variation_records_level_and_drill_id():
     d = build("tracking", 5, level="hard")
     v = r._variation(5, "tracking", d, "h", "q", "c", "muted")
     assert v["level"] == "hard" and v["drill_id"] == "tracking" and v["key"] == params_key(d.params)
+
+
+def test_importing_wording_does_not_load_llm_router():
+    """llm_router pulls in config/.env; importing wording must not do that at import time."""
+    import subprocess
+    import sys
+    code = ("import sys, skillstotraineyes.wording; "
+            "raise SystemExit(1 if 'llm_router' in sys.modules else 0)")
+    root = str(Path(__file__).resolve().parent.parent)
+    assert subprocess.run([sys.executable, "-c", code], cwd=root).returncode == 0

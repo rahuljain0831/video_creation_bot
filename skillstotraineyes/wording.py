@@ -13,9 +13,15 @@ import json
 import logging
 import re
 
-from llm_router import call_llm
-
 log = logging.getLogger(__name__)
+
+
+
+def call_llm(*args, **kwargs):
+    """Late-bound so importing this module never loads .env (config) into os.environ."""
+    from llm_router import call_llm as _call
+    return _call(*args, **kwargs)
+
 
 MAX_HOOK = 40
 MAX_QUESTION = 40
