@@ -120,6 +120,44 @@ Respond with ONLY JSON: {{"hook": "...", "question": "...", "caption": "..."}}""
     return out
 
 
+def hidden_object_caption(scene: dict, recent: list[dict], cfg=None) -> str:
+    """
+    A caption that poses the hunt without answering it.
+
+    Screened three ways, because each failure ships: a medical claim, a position
+    hint that gives the answer away, or a repeat of a recent caption. Any hit
+    falls back to a plain default that names the target and nothing else.
+    """
+    default = f"Somewhere in this picture: {scene['target']}. Can you find it? Answers below."
+    recent_caps = [r["caption"] for r in recent if r.get("caption")]
+    prompt = f"""Write one Instagram caption for a "find the hidden object" photo.
+
+Scene: {scene['environment']}
+Hidden in it: {scene['target']}
+
+Rules:
+- Invite people to hunt and to comment their answer. At most {MAX_CAPTION} characters.
+- NEVER say where it is. No directions, no corners, no "behind" or "under".
+- Treat it as a game. Never mention health, vision, treatment or results.
+- No hashtags.
+
+Respond with ONLY JSON: {{"caption": "..."}}"""
+
+    try:
+        raw, model = call_llm(prompt, cfg_router=(cfg.llm_router if cfg else {}), temperature=0.9)
+        candidate = _parse(raw).get("caption")
+    except Exception as e:
+        log.warning("hidden_object_caption: LLM failed (%s) — using the default", e)
+        return default
+
+    cleaned = _clean(candidate, MAX_CAPTION, recent_caps)
+    if cleaned and not reveals_position(cleaned):
+        log.info("hidden_object_caption: accepted via %s", model)
+        return cleaned
+    log.info("hidden_object_caption: rejected — using the default")
+    return default
+
+
 def pick_drill(seed: int, recent: list[dict], cfg=None) -> str:
     """
     Let the LLM choose the next drill from the catalog.

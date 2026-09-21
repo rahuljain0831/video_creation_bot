@@ -275,3 +275,51 @@ def test_importing_wording_does_not_load_llm_router():
             "raise SystemExit(1 if 'llm_router' in sys.modules else 0)")
     root = str(Path(__file__).resolve().parent.parent)
     assert subprocess.run([sys.executable, "-c", code], cwd=root).returncode == 0
+
+
+_SCENE = {"environment": "a jungle", "target": "a sniper", "difficulty_note": "prone"}
+
+
+def test_hidden_object_caption_never_leaks_the_position(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
+                        lambda *a, **k: ('{"caption": "It is in the top left corner"}', "f"))
+    assert not wording.reveals_position(wording.hidden_object_caption(_SCENE, [], None))
+
+
+def test_hidden_object_caption_survives_a_dead_llm(monkeypatch):
+    from skillstotraineyes import wording
+
+    def boom(*a, **k):
+        raise RuntimeError("dead")
+    monkeypatch.setattr(wording, "call_llm", boom)
+    assert wording.hidden_object_caption(_SCENE, [], None)
+
+
+def test_hidden_object_caption_names_the_target(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm", lambda *a, **k: ("not json", "f"))
+    assert "sniper" in wording.hidden_object_caption(_SCENE, [], None)
+
+
+def test_hidden_object_caption_has_no_medical_claim(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
+                        lambda *a, **k: ('{"caption": "This will improve your eyesight"}', "f"))
+    assert not wording.has_claim(wording.hidden_object_caption(_SCENE, [], None))
+
+
+def test_recent_filters_split_drills_from_images():
+    import run_skillstotraineyes as r
+    rows = [{"kind": "image", "target": "x"}, {"family": "tracking"}]
+    assert r._only_images(rows) == [rows[0]]
+    assert r._only_drills(rows) == [rows[1]]
+
+
+def test_invent_scene_no_llm_never_calls_it(monkeypatch):
+    from skillstotraineyes import hidden_object as ho
+
+    def boom(*a, **k):
+        raise AssertionError("LLM called")
+    monkeypatch.setattr(ho, "call_llm", boom)
+    assert ho.invent_scene(3, [], None, use_llm=False) == ho.FALLBACK_SCENES[3 % len(ho.FALLBACK_SCENES)]

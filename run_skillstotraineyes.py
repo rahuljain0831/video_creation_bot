@@ -5,6 +5,7 @@ Usage:
     python run_skillstotraineyes.py                       # seed + family chosen for you
     python run_skillstotraineyes.py --family tracking     # force a drill family
     python run_skillstotraineyes.py --level god           # force a difficulty level
+    python run_skillstotraineyes.py --mode image          # hidden-object feed post
     python run_skillstotraineyes.py --seed 42             # reproducible
     python run_skillstotraineyes.py --dry-run             # build + validate the drill only
     python run_skillstotraineyes.py --no-publish          # render, skip Drive/schedule
@@ -59,6 +60,15 @@ def _recent(conn: sqlite3.Connection, n: int = RECENT_N) -> list[dict]:
     return out
 
 
+def _only_drills(recent: list[dict]) -> list[dict]:
+    """Old rows carry no `kind`; they are drills."""
+    return [r for r in recent if r.get("kind") != "image"]
+
+
+def _only_images(recent: list[dict]) -> list[dict]:
+    return [r for r in recent if r.get("kind") == "image"]
+
+
 def _build_unique(family: str, seed: int, text: dict | None, recent: list[dict],
                   level: str | None = None, allow_preset: bool = False):
     """Re-seed until the drill's key params differ from every recent one."""
@@ -100,11 +110,71 @@ def _make_audio(drill, niche: dict, mode: str, seed: int, video_id: int, cfg):
     return bed, voice
 
 
+def _run_image_post(args, cfg, niche, conn) -> None:
+    """Generate and publish one hidden-object feed image. No drill, no render."""
+    from skillstotraineyes.hidden_object import HiddenObjectError, build_prompt, generate, invent_scene
+    from skillstotraineyes.wording import hidden_object_caption
+
+    seed = args.seed if args.seed is not None else int(time.time()) % 1_000_000
+    recent = _only_images(_recent(conn))
+    scene = invent_scene(seed, recent, cfg, use_llm=not args.no_llm)
+    log.info("Hidden object: %s in %s", scene["target"], scene["environment"])
+
+    if args.dry_run:
+        log.info("--dry-run: prompt would be: %s", build_prompt(scene))
+        return
+
+    caption_body = (f"Somewhere in this picture: {scene['target']}. Can you find it?"
+                    if args.no_llm else hidden_object_caption(scene, recent, cfg))
+    caption = f"{caption_body}\n\n{niche['disclaimer']}"
+    variation = {"seed": seed, "kind": "image", "target": scene["target"],
+                 "environment": scene["environment"], "caption": caption_body}
+    conn.execute(
+        "INSERT INTO videos (status, prompt, niche_id, variation_params) "
+        "VALUES ('queued', ?, ?, ?)",
+        (f"[hidden_object] {scene['target']}", NICHE_ID, json.dumps(variation)),
+    )
+    conn.commit()
+    video_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    try:
+        out_dir = OUT_ROOT / "images"
+        image_path = generate(scene, out_dir, seed, niche, cfg)
+        conn.execute("UPDATE videos SET status='assembled', file_path=? WHERE id=?",
+                     (image_path, video_id))
+        conn.commit()
+
+        if args.no_publish:
+            log.info("--no-publish: image left at %s", image_path)
+            return
+        from pipeline.publisher import publish
+        ho_cfg = niche.get("hidden_object", {})
+        publish(
+            video_id, image_path, niche, conn, cfg,
+            platforms=["instagram"], schedule_time=args.schedule_time,
+            title=f"Find the {scene['target']}", caption=caption,
+            hashtags=[f"#{t}" for t in ho_cfg.get("hashtags", niche.get("hashtags", []))],
+            media_type="image",
+            notify_text=f"{niche['label']}: hidden object ({scene['target']}), scheduled",
+        )
+        log.info("Done. video_id=%d image=%s", video_id, image_path)
+    except Exception as e:
+        # Expected failures (an unusable provider result) log plainly; anything else keeps its traceback.
+        from pipeline.image_gen import ImageGenError
+        expected = isinstance(e, (HiddenObjectError, ImageGenError))
+        log.error("Image post failed at video_id=%d: %s", video_id, e, exc_info=not expected)
+        conn.execute("UPDATE videos SET status='rejected' WHERE id=?", (video_id,))
+        conn.commit()
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate an eye-exercise Reel")
     parser.add_argument("--family", default=None, help="Force a drill family")
     parser.add_argument("--level", default=None,
                         help="Force a difficulty level (easy/medium/hard/expert/god)")
+    parser.add_argument("--mode", choices=["drill", "image"], default="drill",
+                        help="drill: a Reel. image: a hidden-object feed post.")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--audio-mode", choices=["muted", "voiceover"], default=None)
     parser.add_argument("--dry-run", action="store_true", help="Build + validate only")
@@ -129,9 +199,15 @@ def main() -> None:
     init_db(cfg.paths["db"])
     conn = sqlite3.connect(cfg.paths["db"])
     conn.execute("PRAGMA foreign_keys=ON")
+    if args.mode == "image":
+        try:
+            _run_image_post(args, cfg, niche, conn)
+        finally:
+            conn.close()
+        return
 
     seed = args.seed if args.seed is not None else int(time.time()) % 1_000_000
-    recent = _recent(conn)
+    recent = _only_drills(_recent(conn))
     if args.family:
         family = args.family
     elif args.no_llm:

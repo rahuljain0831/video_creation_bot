@@ -76,7 +76,7 @@ def _clean(value, max_len: int = MAX_FIELD) -> str | None:
     return s if s and len(s) <= max_len else None
 
 
-def invent_scene(seed: int, recent: list[dict], cfg=None) -> dict:
+def invent_scene(seed: int, recent: list[dict], cfg=None, use_llm: bool = True) -> dict:
     """
     Ask the LLM for one (environment, target) pair. Never raises.
 
@@ -84,6 +84,8 @@ def invent_scene(seed: int, recent: list[dict], cfg=None) -> dict:
     back to a built-in scene so a post is never lost to a quota.
     """
     fallback = FALLBACK_SCENES[seed % len(FALLBACK_SCENES)]
+    if not use_llm:
+        return dict(fallback)
     recent_targets = [r.get("target") for r in recent[:10] if r.get("target")]
     prompt = f"""Invent a "find the hidden object" photo brief.
 
