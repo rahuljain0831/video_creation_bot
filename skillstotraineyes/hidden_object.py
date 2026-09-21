@@ -28,6 +28,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from skillstotraineyes.wording import has_claim, reveals_position
+
 log = logging.getLogger(__name__)
 
 
@@ -109,7 +111,13 @@ Respond with ONLY JSON:
 
     scene = {}
     for key in ("environment", "target", "difficulty_note"):
-        scene[key] = _clean(data.get(key)) or fallback[key]
+        val = _clean(data.get(key))
+        # The target reaches the caption, the IG title and the DB, so it also may not
+        # name a position. Position words are fine in a scene ("top of a mountain").
+        if val and (has_claim(val) or (key == "target" and reveals_position(val))):
+            log.info("hidden_object: %s %r rejected — using the built-in one", key, val)
+            val = None
+        scene[key] = val or fallback[key]
     if scene["target"] in recent_targets:
         log.info("hidden_object: %r repeats a recent target — using a built-in scene",
                  scene["target"])
@@ -148,8 +156,9 @@ def generate(scene: dict, out_dir, seed: int, niche: dict, cfg=None) -> str:
     prompt = build_prompt(scene)
     log.info("hidden_object prompt (%d words): %s", len(prompt.split()), prompt)
 
+    # Per-run subdirectory: generate_image always names its file scene_00.<ext>.
     raw = generate_image(
-        image_prompt=prompt, niche=niche, output_dir=str(out_dir),
+        image_prompt=prompt, niche=niche, output_dir=str(out_dir / f"raw_{seed}"),
         scene_index=0, cfg=cfg, seed=seed, use_notes=False,
         min_short_edge=MIN_SHORT_EDGE,
     )

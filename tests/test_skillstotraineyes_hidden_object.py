@@ -130,3 +130,38 @@ def test_generate_asks_the_provider_chain_for_the_minimum_edge(monkeypatch, tmp_
     monkeypatch.setattr(ho, "generate_image", lambda **kw: (seen.update(kw), str(big))[1])
     ho.generate(SCENE, tmp_path, seed=1, niche={"id": "skillstotraineyes"}, cfg=None)
     assert seen["min_short_edge"] == ho.MIN_SHORT_EDGE
+
+
+def _llm_scene(monkeypatch, **fields):
+    data = {**SCENE, **fields}
+    monkeypatch.setattr(ho, "call_llm", lambda *a, **k: (json.dumps(data), "f"))
+    return ho.invent_scene(3, [], None)
+
+
+@pytest.mark.parametrize("bad", ["a snake that cures eyesight", "a snake at the top left"])
+def test_target_with_a_claim_or_position_falls_back(monkeypatch, bad):
+    fb = ho.FALLBACK_SCENES[3 % len(ho.FALLBACK_SCENES)]
+    assert _llm_scene(monkeypatch, target=bad)["target"] == fb["target"]
+
+
+@pytest.mark.parametrize("key", ["environment", "difficulty_note"])
+def test_claim_in_environment_or_note_falls_back(monkeypatch, key):
+    fb = ho.FALLBACK_SCENES[3 % len(ho.FALLBACK_SCENES)]
+    assert _llm_scene(monkeypatch, **{key: "improves eyesight"})[key] == fb[key]
+
+
+def test_position_words_are_fine_in_the_environment(monkeypatch):
+    env = "the top of a misty mountain"
+    assert _llm_scene(monkeypatch, environment=env)["environment"] == env
+
+
+def test_intermediate_lives_in_a_per_run_subdir(monkeypatch, tmp_path):
+    seen = {}
+    def fake(**kw):
+        seen.update(kw)
+        p = tmp_path / "b.png"
+        Image.new("RGB", (1080, 1350), "green").save(p)
+        return str(p)
+    monkeypatch.setattr(ho, "generate_image", fake)
+    ho.generate(SCENE, tmp_path, seed=9, niche={"id": "x"}, cfg=None)
+    assert seen["output_dir"].endswith("raw_9")
