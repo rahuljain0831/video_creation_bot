@@ -109,9 +109,10 @@ def pick_drill(seed: int, recent: list[dict], cfg=None) -> str:
     """
     from skillstotraineyes.drills import FAMILIES, load_catalog, pick_family
 
-    last = [r["drill_id"] for r in recent[:1] if r.get("drill_id")]
+    last = [r.get("drill_id") or r.get("family") for r in recent[:1] if r.get("drill_id") or r.get("family")]
     fallback = pick_family(seed, last)
-    recent_ids = [r.get("drill_id") for r in recent[:10] if r.get("drill_id")]
+    recent_ids = [r.get("drill_id") or r.get("family") for r in recent[:10]
+                  if r.get("drill_id") or r.get("family")]
     menu = "\n".join(f'- {e["id"]}: {e["name"]} — {e["about"]}' for e in load_catalog())
     prompt = (
         "Pick ONE eye-exercise drill for the next short video.\n\n"

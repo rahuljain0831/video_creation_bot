@@ -654,18 +654,19 @@ PRESET_CHANCE = 0.25
 
 
 def build(family: str, seed: int, text: dict | None = None,
-          level: str | None = None) -> Drill:
+          level: str | None = None, allow_preset: bool = False) -> Drill:
     """
     Build a catalog drill. `family` is a catalog entry id, not a builder name.
 
     A quarter of the time an entry with presets uses one instead of rolling: a
     preset is a hand-picked knob mix worth repeating exactly (ten tiny identical
     balls, or four huge fast ones), and it carries its own level. An explicit
-    `level` argument is honoured, so --level always wins.
+    `level` argument beats presets unless `allow_preset` is set (the entry point
+    passes it only when the level was not forced), so --level always wins.
     """
     e = entry(family)
     preset = None
-    if e["presets"] and level is None and random.Random(seed ^ 0x9E37).random() < PRESET_CHANCE:
+    if e["presets"] and (level is None or allow_preset) and random.Random(seed ^ 0x9E37).random() < PRESET_CHANCE:
         preset = random.Random(seed).choice(e["presets"])
         e = {**e, "knobs": {**e["knobs"], **preset["knobs"]}}
         level = preset["level"]

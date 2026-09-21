@@ -217,3 +217,51 @@ def test_niche_config_has_the_new_keys():
     niche = next(n for n in cfgd["niches"] if n["id"] == "skillstotraineyes")
     assert niche["human_policy"] == "none", "a sniper is a human; 'never' would strip it"
     assert niche["levels"] is True
+
+
+# -- presets reachable from the entry point ------------------------------------
+
+def _preset_seeds(fid="tracking", level="easy", allow=True):
+    return [(s, build(fid, s, level=level, allow_preset=allow)) for s in range(80)]
+
+
+def test_allow_preset_fires_and_overrides_level():
+    from skillstotraineyes.drills import entry
+    fired = [d for _, d in _preset_seeds() if d.params["preset"]]
+    assert fired, "no preset in 80 seeds"
+    for d in fired:
+        p = next(p for p in entry("tracking")["presets"] if p["name"] == d.params["preset"])
+        assert d.level == p["level"]
+
+
+def test_no_allow_preset_never_fires():
+    assert not any(d.params["preset"] for _, d in _preset_seeds(allow=False))
+
+
+def test_allow_preset_is_a_noop_without_presets():
+    from skillstotraineyes.drills import load_catalog
+    fid = next(e["id"] for e in load_catalog() if not e["presets"])
+    assert all(d.level == "easy" and not d.params["preset"] for _, d in _preset_seeds(fid))
+
+
+def test_build_unique_respects_allow_preset():
+    import run_skillstotraineyes as r
+    seed = next(s for s, d in _preset_seeds() if d.params["preset"] and d.level != "easy")
+    d, _ = r._build_unique("tracking", seed, None, [], "easy", True)
+    assert d.params["preset"] and d.level != "easy"
+    d2, _ = r._build_unique("tracking", seed, None, [], "easy", False)
+    assert d2.level == "easy" and not d2.params["preset"]
+
+
+def test_pick_drill_reads_old_rows_with_family_only(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
+                        lambda *a, **k: ('{"drill_id": "tracking"}', "fake"))
+    assert wording.pick_drill(3, [{"family": "tracking"}], None) != "tracking"
+
+
+def test_variation_records_level_and_drill_id():
+    import run_skillstotraineyes as r
+    d = build("tracking", 5, level="hard")
+    v = r._variation(5, "tracking", d, "h", "q", "c", "muted")
+    assert v["level"] == "hard" and v["drill_id"] == "tracking" and v["key"] == params_key(d.params)

@@ -60,16 +60,24 @@ def _recent(conn: sqlite3.Connection, n: int = RECENT_N) -> list[dict]:
 
 
 def _build_unique(family: str, seed: int, text: dict | None, recent: list[dict],
-                  level: str | None = None):
+                  level: str | None = None, allow_preset: bool = False):
     """Re-seed until the drill's key params differ from every recent one."""
     from skillstotraineyes.drills import build, too_close
     same_family = [r for r in recent if (r.get("drill_id") or r.get("family")) == family]
     for bump in range(20):
-        drill = build(family, seed + bump, text, level=level)
+        drill = build(family, seed + bump, text, level=level, allow_preset=allow_preset)
         if not too_close(drill.params, same_family):
             return drill, seed + bump
     log.warning("uniqueness gate exhausted 20 re-seeds for %s; accepting the last", family)
     return drill, seed + 19
+
+
+def _variation(seed, family, drill, hook, question, caption_body, mode) -> dict:
+    from skillstotraineyes.drills import params_key
+    return {"seed": seed, "family": family, "drill_id": family, "level": drill.level,
+            "params": drill.params, "key": params_key(drill.params),
+            "hook": hook, "question": question,
+            "caption": caption_body, "audio_mode": mode}
 
 
 def _make_audio(drill, niche: dict, mode: str, seed: int, video_id: int, cfg):
@@ -108,7 +116,7 @@ def main() -> None:
     from config import cfg
     from db.init_db import init_db
     from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL, pick_level
-    from skillstotraineyes.drills import FAMILIES, build, entry, params_key, pick_family
+    from skillstotraineyes.drills import FAMILIES, build, entry, pick_family
 
     niche = _load_niche(cfg)
     if args.family and args.family not in FAMILIES:
@@ -138,7 +146,8 @@ def main() -> None:
 
     # Wording first, so the gate checks the drill that will actually be rendered.
     e = entry(family)
-    base = build(family, seed, level=level)
+    allow_preset = args.level is None
+    base = build(family, seed, level=level, allow_preset=allow_preset)
     defaults = {"hook": base.voice[0][1], "question": base.voice[1][1],
                 "name": e["name"], "about": e["about"], "level_label": LEVEL_LABEL[level]}
     wording = {}
@@ -146,8 +155,9 @@ def main() -> None:
         from skillstotraineyes.wording import generate_wording
         wording = generate_wording(family, defaults, recent, cfg)
     text = {k: wording[k] for k in ("hook", "question") if k in wording}
-    drill, seed = _build_unique(family, seed, text or None, recent, level)
+    drill, seed = _build_unique(family, seed, text or None, recent, level, allow_preset)
 
+    level = drill.level  # a preset may have replaced the picked level
     log.info("Drill=%s level=%s seed=%d duration=%.1fs params=%s",
              family, level, seed, drill.duration, drill.params)
     if args.dry_run:
@@ -165,10 +175,7 @@ def main() -> None:
         caption_body = FALLBACK_CAPTIONS[seed % len(FALLBACK_CAPTIONS)]
     caption = f"{caption_body}\n\n{niche['disclaimer']}"
 
-    variation = {"seed": seed, "family": family, "drill_id": family, "level": level,
-                 "params": drill.params,
-                 "key": params_key(drill.params), "hook": hook, "question": question,
-                 "caption": caption_body, "audio_mode": mode}
+    variation = _variation(seed, family, drill, hook, question, caption_body, mode)
     conn.execute(
         "INSERT INTO videos (status, prompt, niche_id, variation_params) VALUES ('queued', ?, ?, ?)",
         (f"[{family}]", NICHE_ID, json.dumps(variation)),
