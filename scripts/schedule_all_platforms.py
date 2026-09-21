@@ -159,6 +159,11 @@ def schedule_on_platform(video_id, niche_id, drive_file_id, platform, conn,
     }
 
 
+def _is_video_path(path) -> bool:
+    """Only .mp4 files are Reels; an assembled .jpg is a hidden-object post."""
+    return Path(path).suffix.lower() == ".mp4"
+
+
 def process_video(video_id, conn, slot=None, dry_run=False):
     """Approve, upload to Drive, and schedule on all 3 platforms."""
     row = conn.execute(
@@ -173,6 +178,11 @@ def process_video(video_id, conn, slot=None, dry_run=False):
 
     if not file_path:
         log.error("video_id=%d has no file_path", video_id)
+        return []
+
+    if not _is_video_path(file_path):
+        log.warning("video_id=%d skipped: %s is not an .mp4 (image posts are "
+                    "scheduled by run_skillstotraineyes, not as videos)", video_id, file_path)
         return []
 
     video_path = Path(file_path)
