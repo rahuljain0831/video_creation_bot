@@ -181,6 +181,16 @@ def test_pick_drill_falls_back_to_the_catalog_on_a_bad_llm_answer(monkeypatch):
     assert wording.pick_drill(3, [], None) in FAMILIES
 
 
+def test_pick_drill_menu_shows_each_entrys_mode(monkeypatch):
+    from skillstotraineyes import wording
+    from skillstotraineyes.drills import load_catalog
+    seen = []
+    monkeypatch.setattr(wording, "call_llm", lambda p, *a, **k: (seen.append(p), "x")[1] and ("x", "f"))
+    wording.pick_drill(3, [], None)
+    for e in load_catalog():
+        assert f'{e["id"]} [{e["mode"]}]' in seen[0]
+
+
 def test_pick_drill_accepts_a_real_catalog_id(monkeypatch):
     from skillstotraineyes import wording
     monkeypatch.setattr(wording, "call_llm",

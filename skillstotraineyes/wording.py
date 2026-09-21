@@ -171,7 +171,7 @@ def pick_drill(seed: int, recent: list[dict], cfg=None) -> str:
     fallback = pick_family(seed, last)
     recent_ids = [r.get("drill_id") or r.get("family") for r in recent[:10]
                   if r.get("drill_id") or r.get("family")]
-    menu = "\n".join(f'- {e["id"]}: {e["name"]} — {e["about"]}' for e in load_catalog())
+    menu = "\n".join(f'- {e["id"]} [{e["mode"]}]: {e["name"]} — {e["about"]}' for e in load_catalog())
     prompt = (
         "Pick ONE eye-exercise drill for the next short video.\n\n"
         f"{menu}\n\n"
