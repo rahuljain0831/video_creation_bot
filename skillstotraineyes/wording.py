@@ -44,6 +44,20 @@ FALLBACK_CAPTIONS = [
 ]
 
 
+# The answer is never revealed, so the caption must not leak where it is.
+_POSITION = re.compile(
+    r"\b(top|bottom|upper|lower|left|right|centre|center|middle|corner|edge|"
+    r"behind|beneath|under(?:neath)?|beside|next to|near the|"
+    r"first|second|third|fourth)\b",
+    re.IGNORECASE,
+)
+
+
+def reveals_position(text: str) -> bool:
+    """True if the wording hints at where the hidden target is."""
+    return bool(_POSITION.search(text))
+
+
 def has_claim(text: str) -> bool:
     return bool(_CLAIMS.search(text))
 

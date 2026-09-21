@@ -256,6 +256,10 @@
       "bed_pool": ["musicbox"],
       "disclaimer": "Just an eye exercise for fun. Not medical advice.",
       "hashtags": ["eyeexercise", "eyetraining", "focus", "brainteaser", "eyes", "reels"],
+      "hidden_object": {
+        "enabled": true,
+        "hashtags": ["findit", "hiddenobject", "spotit", "visualpuzzle", "brainteaser"]
+      },
       "tts": {
         "voice_edge": "en-US-AriaNeural",
         "rate": "-5%",
