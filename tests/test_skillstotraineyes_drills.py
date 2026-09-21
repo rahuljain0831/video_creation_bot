@@ -22,7 +22,7 @@ def test_drill_shape(family, seed):
     for f in range(0, d.frames, 7):
         for op in d.ops(f):
             if op[0] == "text":
-                _, s, x, y, size, _c = op
+                _, s, x, y, size, _c, *_a = op
                 # Text must clear the platform UI band (centre + half a line).
                 assert y + size * 0.6 < SAFE_BOTTOM, f"{family} text at y={y}"
             else:
@@ -202,3 +202,28 @@ def test_tracking_survives_make_sim_valueerror(monkeypatch):
     monkeypatch.setattr(drills_mod, "make_sim", flaky)
     d = build("tracking", 3, level="god")
     assert d.params["gap"] >= 2.0
+
+
+def _extent(op):
+    """(top, bottom) of a text op's wrapped block, as the renderer will draw it."""
+    from skillstotraineyes import renderer
+    _, s, _x, y, size, _c, *anchor = op
+    lines = renderer._wrap(s, renderer._font(int(size)), renderer._TEXT_MAX_W)
+    lh = int(size * 1.2)
+    first = y if anchor else y - lh * (len(lines) - 1) / 2
+    return first - lh / 2, first + lh * (len(lines) - 1) + lh / 2
+
+
+WORST_HOOK = "Look at each dot the moment it lights up"
+
+
+@pytest.mark.parametrize("hook", [None, WORST_HOOK])
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("family", FAMILIES)
+def test_badge_and_hook_do_not_overlap(family, level, hook):
+    d = build(family, 7, {"hook": hook} if hook else None, level=level)
+    texts = [op for op in d.ops(30) if op[0] == "text"]
+    assert len(texts) == 2, texts          # badge + hook at frame 30
+    (bt, bb), (ht, hb) = _extent(texts[0]), _extent(texts[1])
+    assert bb <= ht, f"{family}/{level}: badge {bt}-{bb} overlaps hook {ht}-{hb}"
+    assert hb < SAFE_BOTTOM

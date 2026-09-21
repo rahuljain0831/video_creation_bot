@@ -118,11 +118,11 @@ def draw_frame(ops: list, base: Image.Image) -> Image.Image:
             _, x, y, hw, hh, col = op
             dr.rectangle([x - hw, y - hh, x + hw, y + hh], fill=col)
         elif kind == "text":
-            _, s, x, y, size, col = op
+            _, s, x, y, size, col, *anchor = op
             font = _font(int(size))
             lines = _wrap(s, font, _TEXT_MAX_W)
             lh = int(size * 1.2)
-            top = y - lh * (len(lines) - 1) / 2
+            top = y if anchor else y - lh * (len(lines) - 1) / 2
             for i, line in enumerate(lines):
                 dr.text((x, top + i * lh), line, font=font, fill=col, anchor="mm",
                         stroke_width=4, stroke_fill=(0, 0, 0))

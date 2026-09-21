@@ -11,7 +11,8 @@ Draw ops (all coordinates in the 1080x1920 frame):
     ("dotted", x, y, r, color)              dotted circle border
     ("cross",  x, y, half, color, width)
     ("square", x, y, half, color)
-    ("text",   s, x, y, size, color)        centred, wrapped by the renderer
+    ("text",   s, x, y, size, color[, "top"])  centred, wrapped by the renderer;
+                                            "top" puts the first line at y and grows downward
 
 Layout keeps clear of Instagram's UI: nothing below SAFE_BOTTOM, and the
 side gutters stay empty.
@@ -36,7 +37,8 @@ SAFE_BOTTOM = 1630          # bottom ~15% is covered by the platform UI
 CX, CY = 540, 900           # arena / play-area centre
 TEXT_TOP_Y = 230
 TEXT_LOW_Y = 1450
-BADGE_Y = 120               # above the hook; the hook block starts at TEXT_TOP_Y
+BADGE_Y = 90                # one line at the top; the hook block hangs below it
+BADGE_HOOK_Y = 200          # first hook line when a badge is present (top-anchored)
 BADGE_SIZE = 54
 BADGE_COLOR = (255, 196, 61)
 
@@ -106,12 +108,13 @@ class Drill:
 def _text_ops(t: float, hook: str, hook_until: float, question: str, t_q: float,
               cta: str, t_cta: float, badge: str = "") -> list:
     if t < hook_until:
-        out = [("text", hook, CX, TEXT_TOP_Y, 92, WHITE)]
-        if badge:
-            # Inside the hook window on purpose: a badge segment of its own would
-            # push saccade past the 30s ceiling.
-            out.insert(0, ("text", badge, CX, BADGE_Y, BADGE_SIZE, BADGE_COLOR))
-        return out
+        if not badge:
+            return [("text", hook, CX, TEXT_TOP_Y, 92, WHITE)]
+        # Inside the hook window on purpose: a badge segment of its own would push
+        # saccade past the 30s ceiling. Both blocks are top-anchored so a hook that
+        # wraps to 3 lines grows down, away from the badge, instead of up into it.
+        return [("text", badge, CX, BADGE_Y, BADGE_SIZE, BADGE_COLOR, "top"),
+                ("text", hook, CX, BADGE_HOOK_Y, 92, WHITE, "top")]
     if t >= t_cta:
         return [("text", cta, CX, TEXT_LOW_Y, 88, WHITE)]
     if t >= t_q:
