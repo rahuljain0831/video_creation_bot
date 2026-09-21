@@ -65,15 +65,17 @@ def entry(drill_id: str) -> dict:
 
 def knob_names(drill_id: str) -> list[str]:
     """The knobs this drill rolls: its declared knobs minus the ones it pins."""
-    e = entry(drill_id)
-    return [n for n in e["knob_names"] if n not in e["knobs"]]
+    return _unpinned(entry(drill_id))
+
+
+def _unpinned(cfg: dict) -> list[str]:
+    return [n for n in cfg["knob_names"] if n not in cfg["knobs"]]
 
 
 def _knobs(cfg: dict, level: str, rng: random.Random) -> dict:
     """Rolled values for a catalog entry's knobs at `level`, pinned ones winning."""
     from skillstotraineyes.difficulty import roll
-    names = [n for n in cfg["knob_names"] if n not in cfg["knobs"]]
-    return {**roll(names, level, rng), **cfg["knobs"]}
+    return {**roll(_unpinned(cfg), level, rng), **cfg["knobs"]}
 
 
 FAMILIES = tuple(e["id"] for e in load_catalog())
@@ -456,10 +458,10 @@ def search(seed: int, text: dict | None = None, level: str | None = None,
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     cols, rows = rng.choice([(5, 7), (6, 8), (5, 8)])
-    look_s = rng.choice([8, 10, 12])
+    k = {}
     if level:
         k = _knobs(entry_cfg, level, rng)
-        (cols, rows), look_s = k["density"], k["look_s"]
+        cols, rows = k["density"]
     sx, sy = min(140, 880 // cols), min(130, 900 // rows)
     xs = [CX + (i - (cols - 1) / 2) * sx for i in range(cols)]
     ys = [CY + (j - (rows - 1) / 2) * sy for j in range(rows)]
@@ -468,6 +470,7 @@ def search(seed: int, text: dict | None = None, level: str | None = None,
     jitter = [(rng.uniform(-14, 14), rng.uniform(-14, 14)) for _ in cells]
 
     hook_until = 3.0
+    look_s = k["look_s"] if k else rng.choice([8, 10, 12])   # draw order kept for level=None
     t_q = hook_until + look_s
     t_reveal = t_q + 1.5
     t_cta = t_reveal + 2.0

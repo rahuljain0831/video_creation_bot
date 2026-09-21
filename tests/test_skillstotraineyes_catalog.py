@@ -73,26 +73,43 @@ def test_knob_names_excludes_fixed_knobs():
 @pytest.mark.parametrize("drill_id", FAMILIES)
 @pytest.mark.parametrize("level", LEVELS)
 def test_every_entry_builds_at_every_level(drill_id, level):
-    for seed in (5, 6):
+    for seed in (5, 6, 7, 8):
         d = build(drill_id, seed, level=level)
         assert 15 <= d.duration <= 30, f"{drill_id}/{level}/{seed} ran {d.duration}s"
         assert d.level == level
         assert d.params["level"] == level
 
 
+# knob -> the params keys that report it
+PARAM_KEYS = {"ball_r": ["ball"], "move_s": ["move"], "cells": ["cols", "rows"],
+              "density": ["cols", "rows"], "look_s": ["look"]}
+
+
+def _seen(drill_id, knob, level):
+    keys = PARAM_KEYS.get(knob, [knob])
+    return {tuple(build(drill_id, s, level=level).params[k] for k in keys) for s in range(6)}
+
+
 @pytest.mark.parametrize("drill_id", FAMILIES)
-def test_rolled_knobs_reach_the_params(drill_id):
-    """A knob a drill declares must change what it builds (else it is decoration)."""
-    names = knob_names(drill_id)
-    seen = {tuple(sorted((k, str(v)) for k, v in build(drill_id, s, level=lv).params.items()))
-            for s in range(3) for lv in ("easy", "god")}
-    assert len(seen) > 1 and names
+def test_every_declared_knob_is_consumed(drill_id):
+    """Same seed, different level: a knob the builder ignores yields identical
+    params at easy and god (the seed alone decides), so the sets would be equal."""
+    for knob in knob_names(drill_id):
+        assert _seen(drill_id, knob, "easy") != _seen(drill_id, knob, "god"),             f"{drill_id} ignores knob {knob}"
 
 
-def test_saccade_pursuit_knobs_are_consumed():
-    lo, hi = build("pursuit_dual", 1, level="easy"), build("pursuit_dual", 1, level="god")
-    assert lo.params["tempo"] < hi.params["tempo"]
-    assert build("saccade", 1, level="god").params["step"] <= 0.7
+@pytest.mark.parametrize("drill_id,knobs", [
+    ("peripheral", {"gap": 0.95}),
+    ("search", {"look_s": 6}),
+    ("saccade", {"step": 0.42, "cells": (2, 4)}),
+    ("saccade", {"step": 1.0, "cells": (4, 6)}),
+])
+def test_tightest_knob_mixes_stay_in_the_duration_window(drill_id, knobs):
+    e = entry(drill_id)
+    cfg = {**e, "knobs": knobs}
+    for seed in range(20):
+        d = BUILDERS[e["builder"]](seed, None, "god", cfg)
+        assert 15 <= d.duration <= 30, f"{drill_id}/{knobs}/{seed} ran {d.duration}s"
 
 
 def test_pick_family_covers_the_whole_catalog():
