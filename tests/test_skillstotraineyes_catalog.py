@@ -80,22 +80,73 @@ def test_every_entry_builds_at_every_level(drill_id, level):
         assert d.params["level"] == level
 
 
-# knob -> the params keys that report it
-PARAM_KEYS = {"ball_r": ["ball"], "move_s": ["move"], "cells": ["cols", "rows"],
-              "density": ["cols", "rows"], "look_s": ["look"]}
+# {drill: {knob: (derived params keys, transform of the rolled value)}}.
+# Asserted against what the builder COMPUTED, using the value _knobs really
+# returned (spied), so a builder that ignores a knob cannot pass.
+_same = lambda v: (v,)
+DERIVED = {
+    "tracking": {"n": (["n"], _same), "ball_r": (["ball"], _same),
+                 "speed": (["speed"], lambda v: (round(float(v), -1),)),
+                 "decoy": (["decoy"], _same), "move_s": (["move"], _same)},
+    "saccade": {"cells": (["cols", "rows"], tuple), "step": (["step"], _same)},
+    "peripheral": {"gap": (["gap"], _same), "flash": (["flash"], _same),
+                   "radius": (["radius"], _same)},
+    "search": {"density": (["cols", "rows"], tuple), "look_s": (["look"], _same)},
+}
 
 
-def _seen(drill_id, knob, level):
-    keys = PARAM_KEYS.get(knob, [knob])
-    return {tuple(build(drill_id, s, level=level).params[k] for k in keys) for s in range(6)}
+@pytest.fixture
+def spy(monkeypatch):
+    from skillstotraineyes import drills
+    rec = []
+    real = drills._knobs
+    monkeypatch.setattr(drills, "_knobs", lambda *a: rec.append(real(*a)) or rec[-1])
+    return rec
 
 
-@pytest.mark.parametrize("drill_id", FAMILIES)
-def test_every_declared_knob_is_consumed(drill_id):
-    """Same seed, different level: a knob the builder ignores yields identical
-    params at easy and god (the seed alone decides), so the sets would be equal."""
-    for knob in knob_names(drill_id):
-        assert _seen(drill_id, knob, "easy") != _seen(drill_id, knob, "god"),             f"{drill_id} ignores knob {knob}"
+def test_every_catalog_knob_is_in_the_derived_table():
+    for e in load_catalog():
+        if e["id"] not in ("pursuit_dual", "figure8"):
+            assert set(knob_names(e["id"])) <= set(DERIVED[e["id"]]), e["id"]
+
+
+@pytest.mark.parametrize("drill_id", list(DERIVED))
+def test_every_declared_knob_is_consumed(drill_id, spy):
+    """Each rolled knob must equal the derived value the builder produced."""
+    for level in LEVELS:
+        for seed in range(4):
+            spy.clear()
+            d = build(drill_id, seed, level=level)
+            for name, (keys, tf) in DERIVED[drill_id].items():
+                assert tuple(d.params[k] for k in keys) == tf(spy[-1][name]),                     f"{drill_id}/{level}/{seed}: {name} not honoured"
+
+
+@pytest.mark.parametrize("drill_id,base", [
+    ("pursuit_dual", lambda r: (r.choice([(2, 3), (3, 4), (3, 2), (1, 2)]), r.uniform(0.55, 0.85))[1]),
+    ("figure8", lambda r: r.uniform(0.7, 1.1)),
+])
+def test_tempo_scales_the_angular_rate(drill_id, base, spy):
+    import random
+    for level in LEVELS:
+        for seed in range(4):
+            spy.clear()
+            d = build(drill_id, seed, level=level)
+            assert d.params["w"] == round(base(random.Random(seed)) * spy[-1]["tempo"], 3)
+
+
+def test_search_at_level_none_matches_the_original_code():
+    """Pinned from search() at commit bed4b22: same RNG order and layout."""
+    from skillstotraineyes.drills import search
+    d = search(3)
+    assert d.params == {"family": "search", "level": "", "cols": 5, "rows": 8, "look": 10}
+    assert d.duration == 19.0
+    o = d.ops(120)
+    assert len(o) == 40
+    assert o[0] == ("disc", 249.651838290384, 456.64645472846746, 32, (245, 245, 245))
+    assert ("square", 807.8651364407907, 1236.1186924295234, 30, (245, 245, 245)) in o
+    d4 = search(4)
+    assert d4.params["cols"] == 6 and d4.params["rows"] == 8 and d4.params["look"] == 10
+    assert ("square", 183.3281482011319, 587.4028620866635, 30, (245, 245, 245)) in d4.ops(120)
 
 
 @pytest.mark.parametrize("drill_id,knobs", [

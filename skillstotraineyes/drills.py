@@ -272,8 +272,7 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None,
 
 def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
              dots: list[Callable[[float], tuple]], dur_choices: list, params: dict,
-             trail: bool, level: str | None = None,
-             knobs: dict | None = None) -> Drill:
+             trail: bool, level: str | None = None) -> Drill:
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     body = rng.choice(dur_choices)
@@ -305,7 +304,7 @@ def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
         return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill(family, total, ops, {**params, "family": family, "body": body,
-                  "level": level or "", **(knobs or {})},
+                  "level": level or ""},
                  voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
                  level=level or "")
 
@@ -316,10 +315,8 @@ def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None,
     rng = random.Random(seed)
     a, b = rng.choice([(2, 3), (3, 4), (3, 2), (1, 2)])
     w = rng.uniform(0.55, 0.85)
-    k = {}
     if level:
-        k = _knobs(entry_cfg, level, rng)
-        w *= k["tempo"]
+        w *= _knobs(entry_cfg, level, rng)["tempo"]
     ph = rng.uniform(0, math.pi)
     A, B = 360, 360
 
@@ -327,7 +324,7 @@ def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None,
     def p2(t): return CX + A * math.sin(a * w * t + math.pi), CY + B * math.sin(b * w * t + ph + 1.3)
 
     return _pursuit(seed, text, "pursuit_dual", "Follow both dots with your eyes",
-                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 1)}, trail=False, level=level, knobs=k)
+                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 3 if level else 1)}, trail=False, level=level)
 
 
 def figure8(seed: int, text: dict | None = None, level: str | None = None,
@@ -335,10 +332,8 @@ def figure8(seed: int, text: dict | None = None, level: str | None = None,
     entry_cfg = entry_cfg or entry("figure8")
     rng = random.Random(seed)
     w = rng.uniform(0.7, 1.1)
-    k = {}
     if level:
-        k = _knobs(entry_cfg, level, rng)
-        w *= k["tempo"]
+        w *= _knobs(entry_cfg, level, rng)["tempo"]
     A, B = 380, 300
     tilt = rng.choice([0.0, math.pi / 2])   # horizontal or vertical infinity
 
@@ -348,7 +343,7 @@ def figure8(seed: int, text: dict | None = None, level: str | None = None,
         return (CX + x, CY + y) if tilt == 0 else (CX + y, CY + x)
 
     return _pursuit(seed, text, "figure8", "Follow the dot in a figure eight",
-                    [p], [14, 18, 22], {"w": round(w, 1), "tilt": int(tilt > 0)}, trail=True, level=level, knobs=k)
+                    [p], [14, 18, 22], {"w": round(w, 3 if level else 1), "tilt": int(tilt > 0)}, trail=True, level=level)
 
 
 # ── saccade grid ──────────────────────────────────────────────────────────────
@@ -462,7 +457,9 @@ def search(seed: int, text: dict | None = None, level: str | None = None,
     if level:
         k = _knobs(entry_cfg, level, rng)
         cols, rows = k["density"]
-    sx, sy = min(140, 880 // cols), min(130, 900 // rows)
+    sx, sy = 140, 130
+    if level:                                   # denser grids shrink to stay in frame
+        sx, sy = min(sx, 880 // cols), min(sy, 900 // rows)
     xs = [CX + (i - (cols - 1) / 2) * sx for i in range(cols)]
     ys = [CY + (j - (rows - 1) / 2) * sy for j in range(rows)]
     cells = [(x, y) for y in ys for x in xs]
