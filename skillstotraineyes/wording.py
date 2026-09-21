@@ -13,6 +13,8 @@ import json
 import logging
 import re
 
+from llm_router import call_llm
+
 log = logging.getLogger(__name__)
 
 MAX_HOOK = 40
@@ -61,12 +63,11 @@ def generate_wording(family: str, defaults: dict, recent: list[dict], cfg=None) 
     Return any of {"hook", "question", "caption"} that passed validation.
     Missing keys mean "use the default". Never raises.
     """
-    from llm_router import call_llm
-
     recent_hooks = [r["hook"] for r in recent if r.get("hook")]
     recent_caps = [r["caption"] for r in recent if r.get("caption")]
     prompt = f"""Write short on-screen wording for a playful eye-exercise Instagram Reel.
-Drill type: {family}
+Drill: {defaults.get('name', family)} — {defaults.get('about', '')}
+Difficulty shown on screen: {defaults.get('level_label', 'none')}
 Default instruction: "{defaults['hook']}"
 Default closing question: "{defaults['question']}"
 
@@ -97,3 +98,35 @@ Respond with ONLY JSON: {{"hook": "...", "question": "...", "caption": "..."}}""
             log.info("wording: %s rejected, using default", key)
     log.info("wording: accepted %s via %s", sorted(out), model)
     return out
+
+
+def pick_drill(seed: int, recent: list[dict], cfg=None) -> str:
+    """
+    Let the LLM choose the next drill from the catalog.
+
+    Its answer is untrusted, so an id that is not in the catalog — or a dead LLM —
+    falls back to the seeded rotation. Recent ids are shown so it spreads out.
+    """
+    from skillstotraineyes.drills import FAMILIES, load_catalog, pick_family
+
+    last = [r["drill_id"] for r in recent[:1] if r.get("drill_id")]
+    fallback = pick_family(seed, last)
+    recent_ids = [r.get("drill_id") for r in recent[:10] if r.get("drill_id")]
+    menu = "\n".join(f'- {e["id"]}: {e["name"]} — {e["about"]}' for e in load_catalog())
+    prompt = (
+        "Pick ONE eye-exercise drill for the next short video.\n\n"
+        f"{menu}\n\n"
+        f"Recently used, avoid these: {recent_ids}\n"
+        'Respond with ONLY JSON: {"drill_id": "..."}'
+    )
+    try:
+        raw, model = call_llm(prompt, cfg_router=(cfg.llm_router if cfg else {}), temperature=1.0)
+        choice = _parse(raw).get("drill_id")
+    except Exception as e:
+        log.warning("pick_drill: LLM failed (%s) — rotating instead", e)
+        return fallback
+    if isinstance(choice, str) and choice in FAMILIES and choice not in last:
+        log.info("pick_drill: %s via %s", choice, model)
+        return choice
+    log.info("pick_drill: %r rejected — rotating to %s", choice, fallback)
+    return fallback

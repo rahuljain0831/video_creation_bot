@@ -4,6 +4,7 @@ Eye-exercise Reel generator — independent of the story pipeline.
 Usage:
     python run_skillstotraineyes.py                       # seed + family chosen for you
     python run_skillstotraineyes.py --family tracking     # force a drill family
+    python run_skillstotraineyes.py --level god           # force a difficulty level
     python run_skillstotraineyes.py --seed 42             # reproducible
     python run_skillstotraineyes.py --dry-run             # build + validate the drill only
     python run_skillstotraineyes.py --no-publish          # render, skip Drive/schedule
@@ -58,12 +59,13 @@ def _recent(conn: sqlite3.Connection, n: int = RECENT_N) -> list[dict]:
     return out
 
 
-def _build_unique(family: str, seed: int, text: dict | None, recent: list[dict]):
+def _build_unique(family: str, seed: int, text: dict | None, recent: list[dict],
+                  level: str | None = None):
     """Re-seed until the drill's key params differ from every recent one."""
     from skillstotraineyes.drills import build, too_close
-    same_family = [r for r in recent if r.get("family") == family]
+    same_family = [r for r in recent if (r.get("drill_id") or r.get("family")) == family]
     for bump in range(20):
-        drill = build(family, seed + bump, text)
+        drill = build(family, seed + bump, text, level=level)
         if not too_close(drill.params, same_family):
             return drill, seed + bump
     log.warning("uniqueness gate exhausted 20 re-seeds for %s; accepting the last", family)
@@ -93,6 +95,8 @@ def _make_audio(drill, niche: dict, mode: str, seed: int, video_id: int, cfg):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate an eye-exercise Reel")
     parser.add_argument("--family", default=None, help="Force a drill family")
+    parser.add_argument("--level", default=None,
+                        help="Force a difficulty level (easy/medium/hard/expert/god)")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--audio-mode", choices=["muted", "voiceover"], default=None)
     parser.add_argument("--dry-run", action="store_true", help="Build + validate only")
@@ -103,11 +107,15 @@ def main() -> None:
 
     from config import cfg
     from db.init_db import init_db
-    from skillstotraineyes.drills import FAMILIES, build, pick_family
+    from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL, pick_level
+    from skillstotraineyes.drills import FAMILIES, build, entry, params_key, pick_family
 
     niche = _load_niche(cfg)
     if args.family and args.family not in FAMILIES:
-        log.error("Unknown family %r. Options: %s", args.family, sorted(FAMILIES))
+        log.error("Unknown drill %r. Options: %s", args.family, sorted(FAMILIES))
+        sys.exit(1)
+    if args.level and args.level not in LEVELS:
+        log.error("Unknown level %r. Options: %s", args.level, list(LEVELS))
         sys.exit(1)
 
     init_db(cfg.paths["db"])
@@ -116,20 +124,32 @@ def main() -> None:
 
     seed = args.seed if args.seed is not None else int(time.time()) % 1_000_000
     recent = _recent(conn)
-    last_family = [recent[0]["family"]] if recent and recent[0].get("family") else []  # newest first
-    family = args.family or pick_family(seed, last_family)
+    if args.family:
+        family = args.family
+    elif args.no_llm:
+        prev = (recent[0].get("drill_id") or recent[0].get("family")) if recent else None
+        family = pick_family(seed, [prev] if prev else [])
+    else:
+        from skillstotraineyes.wording import pick_drill
+        family = pick_drill(seed, recent, cfg)
+
+    recent_levels = [r["level"] for r in recent if r.get("level")]
+    level = args.level or pick_level(seed, recent_levels)
 
     # Wording first, so the gate checks the drill that will actually be rendered.
-    base = build(family, seed)
-    defaults = {"hook": base.voice[0][1], "question": base.voice[1][1]}
+    e = entry(family)
+    base = build(family, seed, level=level)
+    defaults = {"hook": base.voice[0][1], "question": base.voice[1][1],
+                "name": e["name"], "about": e["about"], "level_label": LEVEL_LABEL[level]}
     wording = {}
     if not args.no_llm:
         from skillstotraineyes.wording import generate_wording
         wording = generate_wording(family, defaults, recent, cfg)
     text = {k: wording[k] for k in ("hook", "question") if k in wording}
-    drill, seed = _build_unique(family, seed, text or None, recent)
+    drill, seed = _build_unique(family, seed, text or None, recent, level)
 
-    log.info("Family=%s seed=%d duration=%.1fs params=%s", family, seed, drill.duration, drill.params)
+    log.info("Drill=%s level=%s seed=%d duration=%.1fs params=%s",
+             family, level, seed, drill.duration, drill.params)
     if args.dry_run:
         log.info("--dry-run: stopping before render. Wording=%s", wording or "defaults")
         conn.close()
@@ -145,8 +165,8 @@ def main() -> None:
         caption_body = FALLBACK_CAPTIONS[seed % len(FALLBACK_CAPTIONS)]
     caption = f"{caption_body}\n\n{niche['disclaimer']}"
 
-    from skillstotraineyes.drills import params_key
-    variation = {"seed": seed, "family": family, "params": drill.params,
+    variation = {"seed": seed, "family": family, "drill_id": family, "level": level,
+                 "params": drill.params,
                  "key": params_key(drill.params), "hook": hook, "question": question,
                  "caption": caption_body, "audio_mode": mode}
     conn.execute(
@@ -155,7 +175,7 @@ def main() -> None:
     )
     conn.commit()
     video_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    slug = f"{NICHE_ID}_{family}_{video_id}"
+    slug = f"{NICHE_ID}_{family}_{level}_{video_id}"
     log.info("Created video row: id=%d slug=%s", video_id, slug)
 
     try:

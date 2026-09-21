@@ -249,6 +249,8 @@
       "art_style_prompt_suffix": "",
       "enabled": false,
       "standalone": true,
+      "human_policy": "none",
+      "levels": true,
       "publish_platforms": ["instagram"],
       "audio_modes": ["muted", "voiceover"],
       "bed_pool": ["musicbox"],

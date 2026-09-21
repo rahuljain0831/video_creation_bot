@@ -13,8 +13,8 @@ from skillstotraineyes.wording import generate_wording, has_claim
 # ── wording: LLM output is untrusted ──────────────────────────────────────────
 
 def _llm(monkeypatch, payload):
-    import llm_router
-    monkeypatch.setattr(llm_router, "call_llm",
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
                         lambda *a, **k: (payload if isinstance(payload, str) else json.dumps(payload), "m"))
 
 
@@ -41,9 +41,9 @@ def test_wording_rejects_recent_repeat(monkeypatch):
 
 
 def test_wording_survives_llm_failure(monkeypatch):
-    import llm_router
+    from skillstotraineyes import wording
     def boom(*a, **k): raise RuntimeError("offline")
-    monkeypatch.setattr(llm_router, "call_llm", boom)
+    monkeypatch.setattr(wording, "call_llm", boom)
     assert generate_wording("tracking", DEFAULTS, []) == {}
     _llm(monkeypatch, "not json at all")
     assert generate_wording("tracking", DEFAULTS, []) == {}
@@ -167,3 +167,53 @@ def test_schedule_video_writes_caption_into_manifest(monkeypatch):
     m = written["manifest"]
     assert m["title"] == "Hook" and "Not medical advice." in m["caption"] and m["hashtags"] == ["#eyes"]
     assert m["platform"] == "instagram" and m["niche_id"] == "skillstotraineyes"
+
+
+# -- drill pick / levels ------------------------------------------------------
+
+def test_pick_drill_falls_back_to_the_catalog_on_a_bad_llm_answer(monkeypatch):
+    """Untrusted output: an unknown id must not reach build()."""
+    from skillstotraineyes import wording
+    from skillstotraineyes.drills import FAMILIES
+    monkeypatch.setattr(wording, "call_llm", lambda *a, **k: ("drop table drills", "fake"))
+    assert wording.pick_drill(3, [], None) in FAMILIES
+    monkeypatch.setattr(wording, "call_llm", lambda *a, **k: ('{"drill_id": "nope"}', "fake"))
+    assert wording.pick_drill(3, [], None) in FAMILIES
+
+
+def test_pick_drill_accepts_a_real_catalog_id(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
+                        lambda *a, **k: ('{"drill_id": "zigzag_pursuit"}', "fake"))
+    assert wording.pick_drill(3, [], None) == "zigzag_pursuit"
+
+
+def test_pick_drill_never_repeats_the_previous_drill(monkeypatch):
+    from skillstotraineyes import wording
+    monkeypatch.setattr(wording, "call_llm",
+                        lambda *a, **k: ('{"drill_id": "zigzag_pursuit"}', "fake"))
+    assert wording.pick_drill(3, [{"drill_id": "zigzag_pursuit"}], None) != "zigzag_pursuit"
+
+
+def test_pick_drill_survives_a_dead_llm(monkeypatch):
+    from skillstotraineyes import wording
+    from skillstotraineyes.drills import FAMILIES
+
+    def boom(*a, **k):
+        raise RuntimeError("no providers")
+    monkeypatch.setattr(wording, "call_llm", boom)
+    assert wording.pick_drill(3, [], None) in FAMILIES
+
+
+def test_level_is_recorded_in_variation_params():
+    """The uniqueness gate keys on (family, level, knob mix)."""
+    a = build("tracking", 5, level="easy")
+    b = build("tracking", 5, level="god")
+    assert params_key(a.params) != params_key(b.params)
+
+
+def test_niche_config_has_the_new_keys():
+    cfgd = json.loads(Path("settings.json").read_text(encoding="utf-8"))
+    niche = next(n for n in cfgd["niches"] if n["id"] == "skillstotraineyes")
+    assert niche["human_policy"] == "none", "a sniper is a human; 'never' would strip it"
+    assert niche["levels"] is True
