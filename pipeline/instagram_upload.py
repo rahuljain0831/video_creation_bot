@@ -26,14 +26,24 @@ TEMP_HOSTS = [
 _POLL_INTERVAL_S = 5
 _POLL_MAX_ATTEMPTS = 60  # 5 minutes max
 
+_MIME_BY_EXT = {".mp4": "video/mp4", ".mov": "video/quicktime",
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".png": "image/png", ".webp": "image/webp"}
 
-def _upload_to_temp_host(video_path: Path) -> str:
-    """Upload a local video to a temporary public host.
+
+def _mime_for(path) -> str:
+    """Content type from the extension. The temp hosts reject a mismatched type."""
+    return _MIME_BY_EXT.get(Path(path).suffix.lower(), "application/octet-stream")
+
+
+def _upload_to_temp_host(video_path: Path, mime: str | None = None) -> str:
+    """Upload a local file to a temporary public host.
 
     Tries multiple hosts in order until one succeeds. Returns a public URL.
-    The Instagram Graph API needs the video at a public URL to create
-    a Reel container — this bridges local files to that requirement.
+    The Instagram Graph API needs the media at a public URL to create a
+    container — this bridges local files to that requirement.
     """
+    mime = mime or _mime_for(video_path)
     errors = []
     for host in TEMP_HOSTS:
         log.info("Trying temp host: %s ...", host["name"])
@@ -43,13 +53,13 @@ def _upload_to_temp_host(video_path: Path) -> str:
                     resp = requests.post(
                         host["url"],
                         data={"reqtype": "fileupload", "time": "24h"},
-                        files={host["field"]: (video_path.name, f, "video/mp4")},
+                        files={host["field"]: (video_path.name, f, mime)},
                         timeout=300,
                     )
                 else:
                     resp = requests.post(
                         host["url"],
-                        files={host["field"]: (video_path.name, f, "video/mp4")},
+                        files={host["field"]: (video_path.name, f, mime)},
                         timeout=300,
                     )
             resp.raise_for_status()
@@ -141,19 +151,25 @@ def _refresh_long_lived_token(data: dict, creds_path: Path) -> dict:
 def _create_media_container(
     ig_user_id: str,
     access_token: str,
-    video_url: str,
-    caption: str,
+    video_url: str | None = None,
+    caption: str = "",
     cover_url: str | None = None,
     share_to_feed: bool = True,
+    image_url: str | None = None,
+    media_type: str = "REELS",
 ) -> str:
-    """Step 1: Create a Reels media container (starts server-side processing)."""
-    params = {
-        "media_type": "REELS",
-        "video_url": video_url,
-        "caption": caption,
-        "share_to_feed": str(share_to_feed).lower(),
-        "access_token": access_token,
-    }
+    """Step 1: Create a media container (starts server-side processing).
+
+    A feed photo carries `image_url` and NO `media_type` — the Graph API's
+    image container is the default and rejects an explicit IMAGE value.
+    """
+    params = {"caption": caption, "access_token": access_token}
+    if image_url:
+        params["image_url"] = image_url
+    else:
+        params["media_type"] = media_type
+        params["video_url"] = video_url
+        params["share_to_feed"] = str(share_to_feed).lower()
     if cover_url:
         params["cover_url"] = cover_url
 
@@ -320,4 +336,56 @@ def upload_reel(
     media_id = _publish_container(ig_user_id, container_id, access_token)
 
     log.info("Reel published successfully — media ID: %s", media_id)
+    return media_id
+
+
+def upload_image_post(
+    image_path: str | Path,
+    caption: str,
+    hashtags: list[str] | None = None,
+    credentials_file: str | Path = "credentials/all_niches_ig.json",
+    image_url: str | None = None,
+) -> str:
+    """
+    Publish a local image to the Instagram feed and return its media ID.
+
+    Same three steps as a Reel — public URL, container, publish — but the
+    container is an image container, so there is no processing wait to speak of.
+    JPEG only: the Graph API rejects PNG and WebP for feed photos.
+    """
+    image_path = Path(image_path)
+    creds_path = Path(credentials_file)
+
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+    if not creds_path.exists():
+        raise FileNotFoundError(
+            f"Credentials not found: {creds_path}. "
+            "Run: python scripts/instagram_auth_setup.py"
+        )
+    if image_path.suffix.lower() not in (".jpg", ".jpeg"):
+        raise ValueError(f"Instagram feed photos must be JPEG, got {image_path.suffix}")
+
+    if not image_url:
+        image_url = _upload_to_temp_host(image_path, _mime_for(image_path))
+
+    creds = _load_credentials(creds_path)
+
+    if hashtags:
+        tag_str = " ".join(t if t.startswith("#") else f"#{t}" for t in hashtags)
+        full_caption = f"{caption}\n\n{tag_str}"
+    else:
+        full_caption = caption
+    if len(full_caption) > 2200:
+        log.warning("Caption truncated from %d to 2200 chars", len(full_caption))
+        full_caption = full_caption[:2197] + "..."
+
+    log.info("Uploading feed image: %s (%d chars caption)", image_path.name, len(full_caption))
+    container_id = _create_media_container(
+        ig_user_id=creds["ig_user_id"], access_token=creds["access_token"],
+        image_url=image_url, caption=full_caption,
+    )
+    _poll_container_status(container_id, creds["access_token"])
+    media_id = _publish_container(creds["ig_user_id"], container_id, creds["access_token"])
+    log.info("Image published — media ID: %s", media_id)
     return media_id
