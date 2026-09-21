@@ -580,12 +580,11 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
     t_cta = t_q + 2.0
     total = t_cta + 2.5
 
-    path = _make_path(kind, rng, period)
+    path = base = _make_path(kind, rng, period)
     shift = float(k["shift"])
     if shift:
         # Spatial-Shift Pursuit: the tempo jumps at each period boundary, so the
         # dot's speed stops being predictable without leaving the path.
-        base = path
         jumps = [1.0 + shift * rng.uniform(-1, 1) for _ in range(24)]
 
         def path(t, _base=base, _j=jumps):          # noqa: F811
@@ -593,9 +592,10 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
             warped = sum(_j[:i]) * period + (t - i * period) * _j[i]
             return _base(warped)
 
+    # The guide traces the un-warped base curve: one base period shows all of it.
     guide = k["guide"]
     guide_col = {"visible": (120, 128, 150), "faint": (44, 48, 62)}.get(guide)
-    guide_dots = ([("disc", *path(j * period / GUIDE_SAMPLES), GUIDE_R, guide_col)
+    guide_dots = ([("disc", *base(j * period / GUIDE_SAMPLES), GUIDE_R, guide_col)
                    for j in range(GUIDE_SAMPLES)] if guide_col else [])
     # ponytail: the guide is re-pasted every frame. Bake it into the renderer's
     # base image if drills.py ever costs more than ~40ms/frame.
@@ -616,6 +616,8 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
             tm = t - (hook_until - 0.5)
             for j in range(ghosts, 0, -1):
                 gx, gy = path(max(0.0, tm - j * 0.07))
+                if any(by - bh <= gy <= by + bh for by, bh in bands):
+                    continue
                 fade = 0.45 - j * 0.04
                 out.append(("disc", gx, gy, 24,
                             tuple(max(0, int(c * fade)) for c in accent)))

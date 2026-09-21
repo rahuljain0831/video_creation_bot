@@ -115,7 +115,8 @@ def test_bands_tile_up_to_the_achievable_maximum(drill_id):
     names = _entry_sets()[drill_id]
     top = sum(max(s for _, s in KNOBS[n]) for n in names)
     bands = [band(names, lv) for lv in LEVELS]
-    assert bands[0][0] == 0 and bands[-1][1] == top + 1 or top >= 20
+    assert bands[0][0] == 0
+    assert bands[-1][1] == (21 if top >= 20 else top + 1)
     for (_, hi), (lo, _) in zip(bands, bands[1:]):
         assert hi == lo
 

@@ -216,15 +216,24 @@ def test_path_drill_stays_on_screen(drill_id, level):
                 assert 0 < x < W and 0 < y < H, f"{drill_id}/{level}: {op}"
 
 
-@pytest.mark.parametrize("drill_id", PATH_DRILLS)
-def test_visible_guide_draws_dots_hidden_does_not(drill_id):
-    from skillstotraineyes.drills import GUIDE_R
-    vis = build(drill_id, 4, level="easy")
-    if vis.params.get("guide") != "visible":
-        pytest.skip("this seed did not roll a visible guide")
-    mid = vis.frames // 2
-    guide_dots = [op for op in vis.ops(mid) if op[0] == "disc" and op[3] == GUIDE_R]
-    assert len(guide_dots) > 30, "a visible guide must actually be drawn"
+def _guide_dots(guide, extra=None, seed=4):
+    from skillstotraineyes.drills import GUIDE_R, path_pursuit
+    cfg = {**entry("sine_pursuit"), "knobs": {"path": "sine", "guide": guide, **(extra or {})}}
+    d = path_pursuit(seed, None, "easy", cfg)
+    return [op for op in d.ops(d.frames // 2) if op[0] == "disc" and op[3] == GUIDE_R]
+
+
+def test_guide_visible_faint_hidden():
+    vis, faint = _guide_dots("visible"), _guide_dots("faint")
+    assert len(vis) > 30 and not _guide_dots("hidden")
+    assert len(faint) > 30 and {op[4] for op in faint} != {op[4] for op in vis}
+    assert {op[4] for op in faint} == {(44, 48, 62)}
+
+
+def test_shift_guide_is_the_unwarped_base_curve():
+    a = _guide_dots("visible", {"shift": 0.5})
+    b = _guide_dots("visible", {"shift": 0.0})
+    assert a == b
 
 
 def test_occluder_hides_the_dot():
