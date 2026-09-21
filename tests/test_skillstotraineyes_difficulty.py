@@ -97,3 +97,38 @@ def test_pick_level_is_weighted_to_the_middle():
     picks = [pick_level(s, []) for s in range(400)]
     assert picks.count("medium") > picks.count("easy")
     assert picks.count("hard") > picks.count("god")
+
+
+def _entry_sets():
+    from skillstotraineyes.drills import load_catalog, knob_names
+    return {e["id"]: knob_names(e["id"]) for e in load_catalog() if knob_names(e["id"])}
+
+
+def test_band_is_unchanged_for_the_ball_knobs():
+    from skillstotraineyes.difficulty import band
+    assert all(band(BALL_KNOBS, lv) == LEVEL_SCORE[lv] for lv in LEVELS)
+
+
+@pytest.mark.parametrize("drill_id", list(_entry_sets()))
+def test_bands_tile_up_to_the_achievable_maximum(drill_id):
+    from skillstotraineyes.difficulty import band
+    names = _entry_sets()[drill_id]
+    top = sum(max(s for _, s in KNOBS[n]) for n in names)
+    bands = [band(names, lv) for lv in LEVELS]
+    assert bands[0][0] == 0 and bands[-1][1] == top + 1 or top >= 20
+    for (_, hi), (lo, _) in zip(bands, bands[1:]):
+        assert hi == lo
+
+
+@pytest.mark.parametrize("drill_id", list(_entry_sets()))
+def test_catalog_rolls_land_in_band_and_levels_are_ordered(drill_id):
+    from skillstotraineyes.difficulty import band
+    names = _entry_sets()[drill_id]
+    means = []
+    for lv in LEVELS:
+        lo, hi = band(names, lv)
+        scores = [score(names, roll(names, lv, random.Random(s))) for s in range(15)]
+        if hi > lo:
+            assert all(lo <= x < hi for x in scores), (drill_id, lv, lo, hi, scores)
+        means.append(sum(scores) / len(scores))
+    assert means == sorted(set(means)), (drill_id, means)

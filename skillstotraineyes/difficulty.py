@@ -79,6 +79,23 @@ def score(knob_names: list[str], values: dict) -> int:
     return total
 
 
+def band(knob_names: list[str], level: str) -> tuple[int, int]:
+    """
+    `level`'s half-open score range, scaled to what this knob set can reach.
+
+    LEVEL_SCORE assumes the five ball knobs (max 21). A set that tops out lower
+    (path drills: 7) could never reach GOD MODE, so its bands shrink by
+    (M+1)/21 with one rounding rule for both edges: they still tile and the
+    top band still ends at M+1.
+    """
+    lo, hi = LEVEL_SCORE[level]
+    top = sum(max(s for _, s in KNOBS[n]) for n in knob_names)
+    if top >= 20:
+        return lo, hi
+    k = (top + 1) / 21
+    return int(lo * k + 0.5), int(hi * k + 0.5)
+
+
 def roll(knob_names: list[str], level: str, rng: random.Random) -> dict:
     """
     One value per knob, chosen so the total lands in `level`'s score range.
@@ -93,7 +110,7 @@ def roll(knob_names: list[str], level: str, rng: random.Random) -> dict:
     """
     if level not in LEVEL_SCORE:
         raise ValueError(f"unknown level {level!r}; expected one of {LEVELS}")
-    lo, hi = LEVEL_SCORE[level]
+    lo, hi = band(knob_names, level)
     best, best_miss = None, None
     for _ in range(_MAX_TRIES):
         values = {name: rng.choice(KNOBS[name])[0] for name in knob_names}
