@@ -103,11 +103,11 @@ def main() -> None:
 
     from config import cfg
     from db.init_db import init_db
-    from skillstotraineyes.drills import BUILDERS, build, pick_family
+    from skillstotraineyes.drills import FAMILIES, build, pick_family
 
     niche = _load_niche(cfg)
-    if args.family and args.family not in BUILDERS:
-        log.error("Unknown family %r. Options: %s", args.family, sorted(BUILDERS))
+    if args.family and args.family not in FAMILIES:
+        log.error("Unknown family %r. Options: %s", args.family, sorted(FAMILIES))
         sys.exit(1)
 
     init_db(cfg.paths["db"])

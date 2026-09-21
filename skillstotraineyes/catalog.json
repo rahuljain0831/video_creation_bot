@@ -1,0 +1,67 @@
+{
+  "drills": [
+    {
+      "id": "tracking",
+      "name": "Target Lock",
+      "about": "One ball turns red, then all of them turn white and scatter. Keep your eyes on the one that was red.",
+      "builder": "tracking",
+      "mode": "challenge",
+      "knobs": {},
+      "knob_names": ["n", "ball_r", "speed", "decoy", "move_s"],
+      "presets": [
+        {"name": "Swarm", "level": "god", "knobs": {"n": 10, "ball_r": 26, "speed": 520, "decoy": "identical", "move_s": 14}},
+        {"name": "Bullet", "level": "expert", "knobs": {"n": 4, "ball_r": 72, "speed": 640, "decoy": "similar", "move_s": 11}}
+      ]
+    },
+    {
+      "id": "pursuit_dual",
+      "name": "Divided Pursuit",
+      "about": "Two dots trace opposite Lissajous curves. Hold both at once without turning your head.",
+      "builder": "pursuit_dual",
+      "mode": "watch",
+      "knobs": {},
+      "knob_names": ["tempo"],
+      "presets": []
+    },
+    {
+      "id": "figure8",
+      "name": "Infinity Pursuit",
+      "about": "A single dot runs a figure-eight. Follow it with your eyes only.",
+      "builder": "figure8",
+      "mode": "watch",
+      "knobs": {},
+      "knob_names": ["tempo"],
+      "presets": []
+    },
+    {
+      "id": "saccade",
+      "name": "Jump Grid",
+      "about": "Dots light up one at a time across a grid. Snap your eyes to each the moment it lights.",
+      "builder": "saccade",
+      "mode": "watch",
+      "knobs": {},
+      "knob_names": ["cells", "step"],
+      "presets": []
+    },
+    {
+      "id": "peripheral",
+      "name": "Edge Flash",
+      "about": "Hold the centre cross while dots flash at the rim. Count them without looking away.",
+      "builder": "peripheral",
+      "mode": "challenge",
+      "knobs": {},
+      "knob_names": ["gap", "flash", "radius"],
+      "presets": []
+    },
+    {
+      "id": "search",
+      "name": "Odd One Out",
+      "about": "A field of circles hides one square. Find it before the ring appears.",
+      "builder": "search",
+      "mode": "challenge",
+      "knobs": {},
+      "knob_names": ["density", "look_s"],
+      "presets": []
+    }
+  ]
+}

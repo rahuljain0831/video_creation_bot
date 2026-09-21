@@ -22,6 +22,8 @@ import logging
 import math
 import random
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 from typing import Callable
 
 from skillstotraineyes.sim import make_sim, run
@@ -44,7 +46,37 @@ DIM = (90, 95, 110)
 RED = (235, 40, 45)
 ACCENTS = [(255, 196, 61), (72, 219, 251), (120, 240, 140), (255, 130, 200)]
 
-FAMILIES = ("tracking", "pursuit_dual", "figure8", "saccade", "peripheral", "search")
+CATALOG_PATH = Path(__file__).with_name("catalog.json")
+
+
+@lru_cache(maxsize=1)
+def load_catalog() -> tuple[dict, ...]:
+    """Every drill the niche knows, as data. Cached: the file never changes at runtime."""
+    data = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    return tuple(data["drills"])
+
+
+def entry(drill_id: str) -> dict:
+    for e in load_catalog():
+        if e["id"] == drill_id:
+            return e
+    raise KeyError(f"no catalog entry {drill_id!r}; known: {sorted(e['id'] for e in load_catalog())}")
+
+
+def knob_names(drill_id: str) -> list[str]:
+    """The knobs this drill rolls: its declared knobs minus the ones it pins."""
+    e = entry(drill_id)
+    return [n for n in e["knob_names"] if n not in e["knobs"]]
+
+
+def _knobs(cfg: dict, level: str, rng: random.Random) -> dict:
+    """Rolled values for a catalog entry's knobs at `level`, pinned ones winning."""
+    from skillstotraineyes.difficulty import roll
+    names = [n for n in cfg["knob_names"] if n not in cfg["knobs"]]
+    return {**roll(names, level, rng), **cfg["knobs"]}
+
+
+FAMILIES = tuple(e["id"] for e in load_catalog())
 
 DEFAULT_TEXT = {
     "cta": "Follow for more",
@@ -122,11 +154,11 @@ def too_close(params: dict, recent: list[dict]) -> bool:
 
 # ── tracking (red ball) ───────────────────────────────────────────────────────
 
-_TRACKING_KNOBS = ["n", "ball_r", "speed", "decoy", "move_s"]
+def tracking(seed: int, text: dict | None = None, level: str | None = None,
+             entry_cfg: dict | None = None) -> Drill:
+    from skillstotraineyes.difficulty import fits
 
-
-def tracking(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
-    from skillstotraineyes.difficulty import fits, roll
+    entry_cfg = entry_cfg or entry("tracking")
 
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
@@ -140,7 +172,7 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None) -> D
         # still find a home rather than re-rolling identical values forever.
         arena_r = rng.choice([400, 420, 440])
         if level:
-            k = roll(_TRACKING_KNOBS, level, rng)
+            k = _knobs(entry_cfg, level, rng)
             n, ball_r, speed, decoy, move_s = (
                 k["n"], k["ball_r"], float(k["speed"]), k["decoy"], k["move_s"])
         else:
@@ -238,7 +270,8 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None) -> D
 
 def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
              dots: list[Callable[[float], tuple]], dur_choices: list, params: dict,
-             trail: bool, level: str | None = None) -> Drill:
+             trail: bool, level: str | None = None,
+             knobs: dict | None = None) -> Drill:
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     body = rng.choice(dur_choices)
@@ -269,15 +302,22 @@ def _pursuit(seed: int, text: dict | None, family: str, hook_default: str,
             out.append(("disc", x, y, 34, accent))
         return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta, badge=badge)
 
-    return Drill(family, total, ops, {**params, "family": family, "body": body},
+    return Drill(family, total, ops, {**params, "family": family, "body": body,
+                  "level": level or "", **(knobs or {})},
                  voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
                  level=level or "")
 
 
-def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None,
+                 entry_cfg: dict | None = None) -> Drill:
+    entry_cfg = entry_cfg or entry("pursuit_dual")
     rng = random.Random(seed)
     a, b = rng.choice([(2, 3), (3, 4), (3, 2), (1, 2)])
     w = rng.uniform(0.55, 0.85)
+    k = {}
+    if level:
+        k = _knobs(entry_cfg, level, rng)
+        w *= k["tempo"]
     ph = rng.uniform(0, math.pi)
     A, B = 360, 360
 
@@ -285,12 +325,18 @@ def pursuit_dual(seed: int, text: dict | None = None, level: str | None = None) 
     def p2(t): return CX + A * math.sin(a * w * t + math.pi), CY + B * math.sin(b * w * t + ph + 1.3)
 
     return _pursuit(seed, text, "pursuit_dual", "Follow both dots with your eyes",
-                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 1)}, trail=False, level=level)
+                    [p1, p2], [12, 15, 18], {"a": a, "b": b, "w": round(w, 1)}, trail=False, level=level, knobs=k)
 
 
-def figure8(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+def figure8(seed: int, text: dict | None = None, level: str | None = None,
+            entry_cfg: dict | None = None) -> Drill:
+    entry_cfg = entry_cfg or entry("figure8")
     rng = random.Random(seed)
     w = rng.uniform(0.7, 1.1)
+    k = {}
+    if level:
+        k = _knobs(entry_cfg, level, rng)
+        w *= k["tempo"]
     A, B = 380, 300
     tilt = rng.choice([0.0, math.pi / 2])   # horizontal or vertical infinity
 
@@ -300,17 +346,22 @@ def figure8(seed: int, text: dict | None = None, level: str | None = None) -> Dr
         return (CX + x, CY + y) if tilt == 0 else (CX + y, CY + x)
 
     return _pursuit(seed, text, "figure8", "Follow the dot in a figure eight",
-                    [p], [14, 18, 22], {"w": round(w, 1), "tilt": int(tilt > 0)}, trail=True, level=level)
+                    [p], [14, 18, 22], {"w": round(w, 1), "tilt": int(tilt > 0)}, trail=True, level=level, knobs=k)
 
 
 # ── saccade grid ──────────────────────────────────────────────────────────────
 
-def saccade(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+def saccade(seed: int, text: dict | None = None, level: str | None = None,
+            entry_cfg: dict | None = None) -> Drill:
+    entry_cfg = entry_cfg or entry("saccade")
     rng = random.Random(seed)
     cols, rows = rng.choice([(2, 4), (3, 4), (2, 5), (3, 5)])
     step = rng.choice([0.7, 0.85, 1.0])
     accent = rng.choice(ACCENTS)
-    gx, gy = (300 if cols == 3 else 460), 210
+    if level:
+        k = _knobs(entry_cfg, level, rng)
+        (cols, rows), step = k["cells"], k["step"]
+    gx, gy = {2: 460, 3: 300}.get(cols, 220), (180 if rows > 5 else 210)
     xs = [CX + (i - (cols - 1) / 2) * gx for i in range(cols)]
     ys = [CY + (r - (rows - 1) / 2) * gy for r in range(rows)]
     cells = [(x, y) for y in ys for x in xs]
@@ -320,8 +371,10 @@ def saccade(seed: int, text: dict | None = None, level: str | None = None) -> Dr
         row = list(range(r * cols, (r + 1) * cols))
         rng.shuffle(row)
         order += row
-    seq_len = min(len(order) * 2, int(20 / step))   # 20s body + 7.5s frame stays under 30s
-    seq = (order + order[::-1])[:seq_len]
+    # 20s body + 7.5s frame stays under 30s; short sweeps repeat to clear the 15s floor.
+    seq_len = min(int(20 / step), max(len(order) * 2, math.ceil(8 / step)))
+    lap = order + order[::-1]
+    seq = (lap * (seq_len // len(lap) + 1))[:seq_len]
 
     hook_until = 3.0
     t_q = hook_until + seq_len * step
@@ -343,20 +396,26 @@ def saccade(seed: int, text: dict | None = None, level: str | None = None) -> Dr
         return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("saccade", total, ops,
-                 {"family": "saccade", "cols": cols, "rows": rows, "step": step, "len": seq_len},
+                 {"family": "saccade", "level": level or "", "cols": cols, "rows": rows, "step": step, "len": seq_len},
                  voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
                  level=level or "")
 
 
 # ── peripheral flash ──────────────────────────────────────────────────────────
 
-def peripheral(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+def peripheral(seed: int, text: dict | None = None, level: str | None = None,
+               entry_cfg: dict | None = None) -> Drill:
+    entry_cfg = entry_cfg or entry("peripheral")
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     n = rng.randint(8, 14)
     gap = rng.choice([1.2, 1.5, 1.8])
     flash_s = rng.choice([0.25, 0.35])
     radius = rng.choice([320, 380, 420])
+    if level:
+        k = _knobs(entry_cfg, level, rng)
+        gap, flash_s, radius = k["gap"], k["flash"], k["radius"]
+    n = min(n, int(20 / gap))                       # n*gap <= 20s keeps the video under 30s
 
     angs: list[float] = []
     while len(angs) < n:
@@ -384,18 +443,24 @@ def peripheral(seed: int, text: dict | None = None, level: str | None = None) ->
         return out + _text_ops(t, hook, hook_until, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("peripheral", total, ops,
-                 {"family": "peripheral", "n": n, "gap": gap, "flash": flash_s, "radius": radius},
+                 {"family": "peripheral", "level": level or "", "n": n, "gap": gap, "flash": flash_s, "radius": radius},
                  voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
                  level=level or "")
 
 
 # ── scatter search ────────────────────────────────────────────────────────────
 
-def search(seed: int, text: dict | None = None, level: str | None = None) -> Drill:
+def search(seed: int, text: dict | None = None, level: str | None = None,
+           entry_cfg: dict | None = None) -> Drill:
+    entry_cfg = entry_cfg or entry("search")
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
     cols, rows = rng.choice([(5, 7), (6, 8), (5, 8)])
-    sx, sy = 140, 130
+    look_s = rng.choice([8, 10, 12])
+    if level:
+        k = _knobs(entry_cfg, level, rng)
+        (cols, rows), look_s = k["density"], k["look_s"]
+    sx, sy = min(140, 880 // cols), min(130, 900 // rows)
     xs = [CX + (i - (cols - 1) / 2) * sx for i in range(cols)]
     ys = [CY + (j - (rows - 1) / 2) * sy for j in range(rows)]
     cells = [(x, y) for y in ys for x in xs]
@@ -403,7 +468,6 @@ def search(seed: int, text: dict | None = None, level: str | None = None) -> Dri
     jitter = [(rng.uniform(-14, 14), rng.uniform(-14, 14)) for _ in cells]
 
     hook_until = 3.0
-    look_s = rng.choice([8, 10, 12])
     t_q = hook_until + look_s
     t_reveal = t_q + 1.5
     t_cta = t_reveal + 2.0
@@ -428,7 +492,7 @@ def search(seed: int, text: dict | None = None, level: str | None = None) -> Dri
         return out + _text_ops(t, hook, hook_until - 0.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("search", total, ops,
-                 {"family": "search", "cols": cols, "rows": rows, "look": look_s},
+                 {"family": "search", "level": level or "", "cols": cols, "rows": rows, "look": look_s},
                  chimes=[t_reveal], voice=_lines(hook, question, cta, hook_until, t_q, t_cta),
                  level=level or "")
 
@@ -443,6 +507,26 @@ BUILDERS = {
 }
 
 
+PRESET_CHANCE = 0.25
+
+
 def build(family: str, seed: int, text: dict | None = None,
           level: str | None = None) -> Drill:
-    return BUILDERS[family](seed, text, level)
+    """
+    Build a catalog drill. `family` is a catalog entry id, not a builder name.
+
+    A quarter of the time an entry with presets uses one instead of rolling: a
+    preset is a hand-picked knob mix worth repeating exactly (ten tiny identical
+    balls, or four huge fast ones), and it carries its own level. An explicit
+    `level` argument is honoured, so --level always wins.
+    """
+    e = entry(family)
+    preset = None
+    if e["presets"] and level is None and random.Random(seed ^ 0x9E37).random() < PRESET_CHANCE:
+        preset = random.Random(seed).choice(e["presets"])
+        e = {**e, "knobs": {**e["knobs"], **preset["knobs"]}}
+        level = preset["level"]
+    drill = BUILDERS[e["builder"]](seed, text, level, e)
+    drill.params["drill_id"] = family
+    drill.params["preset"] = preset["name"] if preset else ""
+    return drill
