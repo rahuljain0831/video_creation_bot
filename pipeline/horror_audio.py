@@ -212,7 +212,100 @@ def _bed_dirge(d: float, rng: random.Random) -> tuple[list[str], str]:
     )
 
 
+def _timed(idx: int, chain: str, at: float, label: str) -> str:
+    """One graph line: run input `idx` through `chain`, then delay it to `at` seconds."""
+    return f"[{idx}]{chain},adelay={int(at * 1000)}:all=1[{label}]"
+
+
+def _scatter(d: float, rng: random.Random, n: int, tail: float) -> list[float]:
+    """`n` sorted start times inside [0, d - tail] so every one-shot finishes before the end."""
+    return sorted(rng.uniform(0.3, max(0.5, d - tail)) for _ in range(n))
+
+
+def _bed_ocean(d: float, rng: random.Random) -> tuple[list[str], str]:
+    """Slow surf: a low swell under a soft hiss of foam. Soothing, no melody."""
+    swell = rng.uniform(0.10, 0.14)         # tremolo rejects f < 0.1
+    return (
+        ["-f", "lavfi", "-i", f"anoisesrc=c=brown:d={d}:a=0.8",
+         "-f", "lavfi", "-i", f"anoisesrc=c=pink:d={d}:a=0.5"],
+        f"[0]lowpass=f=900,tremolo=f={swell:.3f}:d=0.75,volume=0.9[a];"
+        f"[1]highpass=f=1800,lowpass=f=7000,tremolo=f={swell:.3f}:d=0.6,volume=0.30[b];"
+        "[a][b]amix=inputs=2:normalize=0,aecho=0.7:0.6:600:0.25",
+    )
+
+
+def _bed_bowls(d: float, rng: random.Random) -> tuple[list[str], str]:
+    """Singing bowl: detuned pairs that beat slowly against each other, swelling and fading."""
+    f = rng.uniform(190, 250)
+    parts = [(f, 0.5), (f + 0.8, 0.5), (f * 2.7, 0.16), (f * 2.7 + 1.1, 0.16), (f * 5.4, 0.05)]
+    sources = []
+    graph = []
+    for i, (hz, vol) in enumerate(parts):
+        sources += ["-f", "lavfi", "-i", f"sine=f={hz:.2f}:d={d}"]
+        graph.append(f"[{i}]tremolo=f={rng.uniform(0.10, 0.16):.3f}:d=0.5,volume={vol}[p{i}]")
+    mix = "".join(f"[p{i}]" for i in range(len(parts)))
+    graph.append(f"{mix}amix=inputs={len(parts)}:normalize=0,lowpass=f=3500,aecho=0.8:0.85:1300:0.4")
+    return sources, ";".join(graph)
+
+
+def _bed_kalimba(d: float, rng: random.Random) -> tuple[list[str], str]:
+    """Soft thumb-piano plucks, sparse and pentatonic, over a quiet warm pad."""
+    scale = [523.3, 587.3, 659.3, 784.0, 880.0, 1046.5]
+    times = _scatter(d, rng, max(4, int(d / 2.2)), 2.0)
+    sources = ["-f", "lavfi", "-i", f"sine=f=130.8:d={d}",
+               "-f", "lavfi", "-i", f"sine=f=196.0:d={d}"]
+    graph = ["[0]tremolo=f=0.12:d=0.3,volume=0.25[a0]", "[1]tremolo=f=0.14:d=0.3,volume=0.18[a1]"]
+    labels = ["[a0]", "[a1]"]
+    for i, t in enumerate(times, start=2):
+        sources += ["-f", "lavfi", "-i", f"sine=f={rng.choice(scale):.1f}:d=1.8"]
+        graph.append(_timed(i, "afade=t=in:st=0:d=0.01,afade=t=out:st=0.02:d=1.7:curve=exp,"
+                               f"volume={rng.uniform(0.35, 0.6):.2f}", t, f"c{i}"))
+        labels.append(f"[c{i}]")
+    graph.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0,lowpass=f=4000,"
+                 "aecho=0.7:0.6:400:0.3")
+    return sources, ";".join(graph)
+
+
+def _bed_forest(d: float, rng: random.Random) -> tuple[list[str], str]:
+    """Wind in leaves with a few distant, soft bird calls."""
+    times = _scatter(d, rng, max(3, int(d / 3.5)), 1.0)
+    sources = ["-f", "lavfi", "-i", f"anoisesrc=c=brown:d={d}:a=0.6"]
+    graph = [f"[0]lowpass=f={rng.randint(500, 800)},highpass=f=80,"
+             f"tremolo=f={rng.uniform(0.10, 0.16):.3f}:d=0.6,volume=0.9[w]"]
+    labels = ["[w]"]
+    for i, t in enumerate(times, start=1):
+        sources += ["-f", "lavfi", "-i", f"sine=f={rng.uniform(2600, 4200):.0f}:d=0.45"]
+        graph.append(_timed(i, f"vibrato=f={rng.uniform(7, 11):.1f}:d=0.6,"
+                               "afade=t=in:st=0:d=0.08,afade=t=out:st=0.2:d=0.25,volume=0.08",
+                            t, f"c{i}"))
+        labels.append(f"[c{i}]")
+    graph.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0,aecho=0.7:0.6:300:0.3")
+    return sources, ";".join(graph)
+
+
+def _bed_windchimes(d: float, rng: random.Random) -> tuple[list[str], str]:
+    """Wind chimes on a soft breeze. Pentatonic, so any two notes sound fine together."""
+    scale = [1046.5, 1174.7, 1318.5, 1568.0, 1760.0, 2093.0]
+    times = _scatter(d, rng, max(4, int(d / 1.7)), 2.5)
+    sources = ["-f", "lavfi", "-i", f"anoisesrc=c=brown:d={d}:a=0.5"]
+    graph = [f"[0]lowpass=f=450,highpass=f=70,tremolo=f={rng.uniform(0.10, 0.15):.3f}:d=0.6,"
+             "volume=0.35[w]"]
+    labels = ["[w]"]
+    for i, t in enumerate(times, start=1):
+        sources += ["-f", "lavfi", "-i", f"sine=f={rng.choice(scale):.1f}:d=2.6"]
+        graph.append(_timed(i, f"afade=t=out:st=0.01:d=2.5:curve=exp,volume={rng.uniform(0.25, 0.5):.2f}",
+                            t, f"c{i}"))
+        labels.append(f"[c{i}]")
+    graph.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0,aecho=0.7:0.6:350:0.35")
+    return sources, ";".join(graph)
+
+
 _BEDS = {
+    "ocean":      _bed_ocean,
+    "bowls":      _bed_bowls,
+    "kalimba":    _bed_kalimba,
+    "forest":     _bed_forest,
+    "windchimes": _bed_windchimes,
     "dirge":      _bed_dirge,
     "abyss":      _bed_abyss,
     "windhollow": _bed_windhollow,
@@ -222,7 +315,11 @@ _BEDS = {
     "breathroom": _bed_breathroom,
 }
 
-BED_NAMES = tuple(_BEDS)
+# Calm nature beds for niches that want soothing rather than dread. Kept out of
+# BED_NAMES so a horror niche with no `bed_pool` never lands on one.
+SOOTHING_BEDS = ("ocean", "forest", "windchimes", "bowls", "kalimba")
+
+BED_NAMES = tuple(b for b in _BEDS if b not in SOOTHING_BEDS)
 
 # Beds that read as music rather than as room tone. A niche that wants a scored
 # feel sets `bed_pool` to this rather than pinning one bed, so videos still

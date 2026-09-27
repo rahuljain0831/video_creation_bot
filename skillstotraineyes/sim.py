@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from skillstotraineyes.shapes import boundary_query
+
 MIN_BALLS = 2
 MAX_BALLS = 10
 
@@ -22,6 +24,7 @@ class Sim:
     radius: np.ndarray   # (n,)   float64
     arena_c: np.ndarray  # (2,)   arena centre
     arena_r: float
+    poly: np.ndarray | None = None   # closed polygon arena; None means the circle
 
     @property
     def n(self) -> int:
@@ -32,7 +35,32 @@ class Sim:
         self._walls()
         self._balls()
 
+    def _poly_walls(self) -> None:
+        # Keep every ball's centre `radius` inside the polygon. Push it back along the
+        # normal at the nearest boundary point, and reflect if it was heading outward.
+        # A few passes: at a sharp spike, fixing one wall can push the ball into the next.
+        for _ in range(4):
+            dist, near, inside = boundary_query(self.pos, self.poly)
+            signed = np.where(inside, dist, -dist)
+            hit = np.flatnonzero(signed < self.radius - 0.01)
+            if not len(hit):
+                return
+            for i in hit:
+                nrm = (self.pos[i] - near[i]) if inside[i] else (near[i] - self.pos[i])
+                length = float(np.hypot(*nrm))
+                if length < 1e-9:
+                    nrm = self.arena_c - self.pos[i]
+                    length = float(np.hypot(*nrm))
+                nrm = nrm / max(length, 1e-9)
+                vn = float(self.vel[i] @ nrm)
+                if vn < 0:
+                    self.vel[i] -= 2 * vn * nrm
+                self.pos[i] = near[i] + nrm * self.radius[i]
+
     def _walls(self) -> None:
+        if self.poly is not None:
+            self._poly_walls()
+            return
         # Reflect about the wall normal, then clamp back inside. Radius-aware.
         rel = self.pos - self.arena_c
         dist = np.linalg.norm(rel, axis=1)
@@ -91,7 +119,7 @@ class Sim:
 
 
 def make_sim(seed: int, n: int, arena_r: float, ball_r: float, speed: float,
-             arena_c=(540.0, 800.0)) -> Sim:
+             arena_c=(540.0, 800.0), poly: np.ndarray | None = None) -> Sim:
     """Random non-overlapping start inside the arena. Deterministic per seed."""
     if not MIN_BALLS <= n <= MAX_BALLS:
         raise ValueError(f"ball count must be {MIN_BALLS}..{MAX_BALLS}, got {n}")
@@ -103,11 +131,18 @@ def make_sim(seed: int, n: int, arena_r: float, ball_r: float, speed: float,
     rng = np.random.default_rng(seed)
     c = np.array(arena_c, dtype=np.float64)
     pos: list[np.ndarray] = []
+    lo, hi = (poly.min(0), poly.max(0)) if poly is not None else (None, None)
     for _ in range(n):
         for _attempt in range(1000):
-            ang = rng.uniform(0, 2 * np.pi)
-            r = (arena_r - ball_r) * np.sqrt(rng.uniform())
-            p = c + r * np.array([np.cos(ang), np.sin(ang)])
+            if poly is None:
+                ang = rng.uniform(0, 2 * np.pi)
+                r = (arena_r - ball_r) * np.sqrt(rng.uniform())
+                p = c + r * np.array([np.cos(ang), np.sin(ang)])
+            else:
+                p = lo + rng.uniform(0, 1, 2) * (hi - lo)
+                d, _, inside = boundary_query(p[None], poly)
+                if not (inside[0] and d[0] >= 1.05 * ball_r):
+                    continue
             if all(np.linalg.norm(p - q) >= 2.2 * ball_r for q in pos):
                 pos.append(p)
                 break
@@ -116,7 +151,7 @@ def make_sim(seed: int, n: int, arena_r: float, ball_r: float, speed: float,
 
     ang = rng.uniform(0, 2 * np.pi, n)
     vel = speed * np.stack([np.cos(ang), np.sin(ang)], axis=1)
-    return Sim(np.array(pos), vel, np.full(n, float(ball_r)), c, float(arena_r))
+    return Sim(np.array(pos), vel, np.full(n, float(ball_r)), c, float(arena_r), poly)
 
 
 def run(sim: Sim, frames: int, fps: int = 30, substeps: int = 4) -> list[np.ndarray]:

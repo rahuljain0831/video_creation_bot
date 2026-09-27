@@ -22,11 +22,14 @@ import json
 import logging
 import math
 import random
+import re
+import numpy as np
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
+from skillstotraineyes.shapes import by_id, pick_shape
 from skillstotraineyes.sim import make_sim, run
 
 log = logging.getLogger(__name__)
@@ -161,36 +164,48 @@ def too_close(params: dict, recent: list[dict]) -> bool:
 
 def tracking(seed: int, text: dict | None = None, level: str | None = None,
              entry_cfg: dict | None = None) -> Drill:
-    from skillstotraineyes.difficulty import fits
+    from skillstotraineyes.difficulty import LEVELS, fits
 
     entry_cfg = entry_cfg or entry("tracking")
 
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
-    static_s, recolor_s = 2.0, 2.0
+    static_s, red_move_s, reveal_s = 2.0, 3.0, 2.0
+    TRACK_SPEED_BOOST = 1.8
+    TRACK_LOCKED = {1: (8, 44, 420.0), 2: (8, 32, 520.0), 3: (8, 26, 640.0)}   # step -> (n, ball_r, speed)
 
     # Re-roll rather than raise: an infeasible pack (ten balls at r=72) is a
     # legitimate draw from the knob table, and make_sim rejects it outright.
     arena_r = 440
     for _attempt in range(40):
-        # The arena is re-picked each try, so a preset that pins n and ball_r can
-        # still find a home rather than re-rolling identical values forever.
-        arena_r = rng.choice([400, 420, 440])
         if level:
-            k = _knobs(entry_cfg, level, rng)
-            n, ball_r, speed, decoy, move_s = (
-                k["n"], k["ball_r"], float(k["speed"]), k["decoy"], k["move_s"])
+            # Tracking has three levels (medium, hard, expert), locked to the approved
+            # values. "easy" is treated as medium and "god" as expert. Only a preset's
+            # pinned knobs (n / ball_r / speed / decoy) can override the lock.
+            step = min(max(LEVELS.index(level), 1), 3)
+            k = _knobs(entry_cfg, LEVELS[step + 1], rng)
+            n, ball_r, speed = TRACK_LOCKED[step]
+            n, ball_r, speed = k.get("n", n), k.get("ball_r", ball_r), float(k.get("speed", speed))
+            decoy = k.get("decoy", "distinct")
+            # White bouncing phase: 11.5s at medium, +3.5s per level.
+            move_s = red_move_s + 8 + 3.5 * step
         else:
             n, ball_r = rng.randint(2, 5), rng.randint(34, 50)
             speed, decoy, move_s = rng.uniform(250, 450), "distinct", rng.choice([10, 12, 14, 16])
+        arena_r = min(480, round(340 + 2.5 * ball_r))   # bigger balls get a bigger circle
         if fits(n, arena_r, ball_r):
             break
     else:
         n, ball_r, speed, decoy, move_s = 4, 40, 320.0, "distinct", 12
+        arena_r = round(340 + 2.5 * ball_r)
 
     # The reveal must be unambiguous, but a crowded arena cannot always give the
     # target three clear radii. Scale the bar with the crowd and keep the best
     # candidate seen, because raising here would kill the whole run.
+    # A seeded arena that fits the balls; the circle when the drill has no level.
+    shape, shape_s = pick_shape(seed, n, ball_r, arena_r) if level else (by_id("circle"), arena_r)
+    poly = None if shape.id == "circle" else np.array([CX, CY]) + shape_s * shape.verts
+
     def search(n, ball_r, speed, move_s, bumps):
         want = 3.0 if n <= 5 else 2.2
         best = None
@@ -198,9 +213,12 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None,
             for attempt in range(60):
                 try:
                     cand = make_sim(seed * 1000 + bump * 100000 + attempt, n, arena_r,
-                                    ball_r, speed, arena_c=(CX, CY))
+                                    ball_r, speed, arena_c=(CX, CY), poly=poly)
                 except ValueError:      # fits() is only a heuristic
                     continue
+                # Each ball gets its own pace (one slow, one fast); collisions swap momentum.
+                cand.vel *= TRACK_SPEED_BOOST * np.random.default_rng(seed + attempt).uniform(
+                    0.6, 1.4, n)[:, None]
                 pos0 = cand.pos.copy()
                 frames = run(cand, round(move_s * FPS), FPS)
                 gap = cand.min_gap(0)
@@ -217,33 +235,40 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None,
     if best is None or best[0] < MIN_GAP:
         log.warning("tracking: no clear reveal at n=%d r=%d; using safe pack", n, ball_r)
         n, ball_r, speed, decoy, move_s = 4, 40, 320.0, "distinct", 12
+        arena_r = round(340 + 2.5 * ball_r)
+        shape, poly = by_id("circle"), None
         best = search(n, ball_r, speed, move_s, 5)
     gap, sim, pos0, frames = best
 
     target = 0                                  # id, not colour
     final = sim.pos.copy()
     t_move0 = static_s
-    t_recolor = static_s + recolor_s
-    t_q = static_s + move_s
-    t_reveal = t_q + 2.0
-    t_cta = t_reveal + 2.0
-    total = t_cta + 2.5
+    t_recolor = static_s + red_move_s           # target turns white, all balls identical
+    t_reveal = static_s + move_s                # balls stop, target red + ringed, question asked
+    t_q = t_reveal
+    total = t_reveal + reveal_s
+    t_cta = total                               # no CTA segment: the video ends on the question
 
     hook = _text(text, "hook", "Track the red ball")
     question = _text(text, "question", "Were you able to track it?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
     badge = _badge(level)
+    pct = re.search(r"(\d+)%", badge)                       # "MEDIUM · 60% can pass this"
+    intro = "Can you keep track of the red ball?" + (f" Only {pct.group(1)} percent can pass." if pct else "")
+
+    outline = tuple(map(tuple, poly.round(1))) if poly is not None else ()
 
     def ops(f: int) -> list:
         t = f / FPS
         if t < t_move0:
             pos = pos0
-        elif t < t_q:
+        elif t < t_reveal:
             pos = frames[min(int((t - t_move0) * FPS), len(frames) - 1)]
         else:
             pos = final
         revealed = t >= t_reveal
-        out = [("dotted", CX, CY, arena_r, accent)]
+        out = [("dotted", CX, CY, arena_r, accent) if poly is None
+               else ("poly", CX, CY, outline, accent)]
         for i in range(n):
             x, y = float(pos[i][0]), float(pos[i][1])
             if i == target:
@@ -252,22 +277,14 @@ def tracking(seed: int, text: dict | None = None, level: str | None = None,
                 if revealed:
                     out.append(("ring", x, y, ball_r + 16, accent, 6))
             else:
-                col = WHITE
-                if revealed:
-                    col = DIM
-                elif t >= t_recolor:           # lures only once the target has gone white
-                    if decoy == "identical" and i == 1:
-                        col = RED
-                    elif decoy == "similar":
-                        col = (210, 110, 110)
-                out.append(("disc", x, y, ball_r, col))
+                out.append(("disc", x, y, ball_r, DIM if revealed else WHITE))
         return out + _text_ops(t, hook, 2.5, question, t_q, cta, t_cta, badge=badge)
 
     return Drill("tracking", total, ops,
                  {"family": "tracking", "level": level or "", "n": n,
-                  "arena": arena_r, "ball": ball_r, "speed": round(speed, -1),
+                  "arena": arena_r, "shape": shape.id, "ball": ball_r, "speed": round(speed, -1),
                   "decoy": decoy, "move": move_s, "gap": round(gap, 1)},
-                 chimes=[t_reveal], voice=_lines(hook, question, cta, 2.5, t_q, t_cta),
+                 chimes=[t_reveal], voice=[(0.3, intro), (t_q + 0.2, question)],
                  level=level or "")
 
 
@@ -642,7 +659,14 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
                  level=level or "")
 
 
+def _grid_memory(*args, **kwargs) -> Drill:
+    # Late import: memory_drills imports its helpers from this module.
+    from skillstotraineyes.memory_drills import grid_memory
+    return grid_memory(*args, **kwargs)
+
+
 BUILDERS = {
+    "grid_memory": _grid_memory,
     "tracking": tracking,
     "pursuit_dual": pursuit_dual,
     "figure8": figure8,

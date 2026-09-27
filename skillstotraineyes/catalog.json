@@ -7,10 +7,10 @@
       "builder": "tracking",
       "mode": "challenge",
       "knobs": {},
-      "knob_names": ["n", "ball_r", "speed", "decoy", "move_s"],
+      "knob_names": [],
       "presets": [
-        {"name": "Swarm", "level": "god", "knobs": {"n": 10, "ball_r": 26, "speed": 520, "decoy": "identical", "move_s": 14}},
-        {"name": "Bullet", "level": "expert", "knobs": {"n": 4, "ball_r": 72, "speed": 640, "decoy": "similar", "move_s": 11}}
+        {"name": "Swarm", "level": "god", "knobs": {"n": 10, "ball_r": 26, "speed": 520, "decoy": "identical"}},
+        {"name": "Bullet", "level": "expert", "knobs": {"n": 4, "ball_r": 72, "speed": 640, "decoy": "similar"}}
       ]
     },
     {
@@ -119,6 +119,12 @@
       "builder": "path_pursuit", "mode": "watch",
       "knobs": {"path": "steps"},
       "knob_names": ["tempo", "guide"], "presets": []
+    },
+    {
+      "id": "grid_memory", "name": "Grid Memory",
+      "about": "A grid lights up for a moment, then goes dark. Remember which cells were lit.",
+      "builder": "grid_memory", "mode": "challenge",
+      "knobs": {}, "knob_names": [], "presets": []
     }
   ]
 }

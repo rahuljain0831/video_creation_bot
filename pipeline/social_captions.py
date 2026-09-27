@@ -6,6 +6,7 @@ Returns {} on any failure — caller must handle gracefully.
 """
 import json
 import logging
+import random
 import re
 from pathlib import Path
 
@@ -26,6 +27,18 @@ def _load_hashtag_banks() -> dict:
     else:
         _banks_cache = {}
     return _banks_cache
+
+# Most hashtags a post may carry. Instagram enforces 30; Facebook has no hard cap, so it
+# borrows Instagram's figure. `pick_hashtags` uses half of it.
+_MAX_HASHTAGS = {"instagram": 30, "facebook": 30}
+
+
+def pick_hashtags(bank_id: str, platform: str, seed: int) -> list[str]:
+    """Random half of `platform`'s cap, drawn from `bank_id`'s bank. Same seed, same tags."""
+    bank = _load_hashtag_banks().get(bank_id, {}).get(platform, [])
+    count = min(len(bank), _MAX_HASHTAGS.get(platform, 0) // 2)
+    return random.Random(seed).sample(bank, count)
+
 
 _PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "pinterest", "linkedin")
 

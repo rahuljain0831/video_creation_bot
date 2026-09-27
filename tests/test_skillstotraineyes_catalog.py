@@ -85,9 +85,7 @@ def test_every_entry_builds_at_every_level(drill_id, level):
 # returned (spied), so a builder that ignores a knob cannot pass.
 _same = lambda v: (v,)
 DERIVED = {
-    "tracking": {"n": (["n"], _same), "ball_r": (["ball"], _same),
-                 "speed": (["speed"], lambda v: (round(float(v), -1),)),
-                 "decoy": (["decoy"], _same), "move_s": (["move"], _same)},
+    "tracking": {},   # locked per level in drills.py; nothing is rolled
     "saccade": {"cells": (["cols", "rows"], tuple), "step": (["step"], _same)},
     "peripheral": {"gap": (["gap"], _same), "flash": (["flash"], _same),
                    "radius": (["radius"], _same)},
@@ -113,7 +111,7 @@ def spy(monkeypatch):
 
 def test_every_catalog_knob_is_in_the_derived_table():
     for e in load_catalog():
-        if e["id"] not in ("pursuit_dual", "figure8"):
+        if e["id"] not in ("pursuit_dual", "figure8", "grid_memory"):
             assert set(knob_names(e["id"])) <= set(DERIVED[e["id"]]), e["id"]
 
 

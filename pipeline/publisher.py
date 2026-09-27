@@ -39,7 +39,7 @@ def publish(
     schedule_time: str | None = None,
     title: str | None = None,
     caption: str = "",
-    hashtags: list[str] | None = None,
+    hashtags: list[str] | dict[str, list[str]] | None = None,
     notify_text: str = "",
     media_type: str = "video",
 ) -> list[dict]:

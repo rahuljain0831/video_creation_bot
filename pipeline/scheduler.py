@@ -230,7 +230,7 @@ def schedule_video(
     force_time: datetime | None = None,
     title: str | None = None,
     caption: str = "",
-    hashtags: list[str] | None = None,
+    hashtags: list[str] | dict[str, list[str]] | None = None,
     media_type: str = "video",
 ) -> dict:
     """
@@ -265,6 +265,8 @@ def schedule_video(
     if scheduled_at <= datetime.now(timezone.utc):
         logger.warning("Scheduled time %s is in the past — pushing to tomorrow", scheduled_at)
         scheduled_at = scheduled_at + timedelta(days=1)
+    if isinstance(hashtags, dict):      # per-platform picks: keep the rotated platform's
+        hashtags = hashtags.get(platform, [])
     caption_variant = random.choice(["A", "B"])
 
     scheduled_at_str = scheduled_at.strftime("%Y-%m-%d %H:%M:%S")

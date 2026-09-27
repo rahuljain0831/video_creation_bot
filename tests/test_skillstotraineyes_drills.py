@@ -40,7 +40,7 @@ def test_same_seed_same_drill(family):
 def test_ends_with_cta():
     d = build("tracking", 1)
     texts = [op[1] for op in d.ops(d.frames - 1) if op[0] == "text"]
-    assert texts == ["Follow for more"]
+    assert texts == ["Were you able to track it?"]   # tracking ends on the question, no CTA
 
 
 def test_text_override_reaches_frames():
@@ -130,10 +130,14 @@ def test_tracking_reveal_stays_readable(level, seed):
     assert d.params["gap"] >= 2.0, f"{level}/{seed} reveal gap {d.params['gap']}"
 
 
-def test_tracking_gets_harder_with_level():
-    def n_balls(level):
-        return sum(build("tracking", s, level=level).params["n"] for s in range(10))
-    assert n_balls("god") > n_balls("easy")
+@pytest.mark.parametrize("level,n,ball,arena,speed", [
+    ("medium", 8, 44, 450, 420.0), ("hard", 8, 32, 420, 520.0), ("expert", 8, 26, 405, 640.0),
+    ("easy", 8, 44, 450, 420.0), ("god", 8, 26, 405, 640.0),      # easy -> medium, god -> expert
+])
+@pytest.mark.parametrize("seed", [1, 7, 413508])
+def test_tracking_levels_are_locked(level, n, ball, arena, speed, seed):
+    p = build("tracking", seed, level=level).params
+    assert (p["n"], p["ball"], p["arena"], p["speed"]) == (n, ball, arena, speed)
 
 
 @pytest.mark.parametrize("level", LEVELS)
@@ -167,11 +171,14 @@ def test_tracking_one_red_at_start_for_every_decoy(kind):
     assert _reds(d, 0) == [0]
 
 
-def test_tracking_identical_decoy_lure_and_reveal():
-    d = _find_decoy("identical")
-    f = int(4.2 * d.fps)                      # after t_recolor
-    r = _reds(d, f)
-    assert len(r) == 1 and r[0] != 0
+@pytest.mark.parametrize("level", LEVELS)
+def test_tracking_timeline_no_lure_and_reveal(level):
+    d = build("tracking", 3, level=level)
+    white_s = 8 + 3.5 * min(max(LEVELS.index(level), 1), 3)   # easy -> medium, god -> expert
+    assert d.duration == pytest.approx(2 + 3 + white_s + 2)
+    assert _reds(d, 0) == [0] and _reds(d, int(3 * d.fps)) == [0]   # red while paused and early moving
+    for t in (5.5, 5 + white_s / 2, 5 + white_s - 0.5):             # all white: no decoy turns red
+        assert _reds(d, int(t * d.fps)) == []
     last = d.frames - 1
     assert _reds(d, last) == [0]
     assert any(o[0] == "ring" for o in d.ops(last))

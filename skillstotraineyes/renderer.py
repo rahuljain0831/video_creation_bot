@@ -29,7 +29,9 @@ _SS = 4                       # supersampling factor for shape masks
 _TEXT_MAX_W = 880             # keeps text inside the side gutters
 BED_VOLUME = 0.9      # bed must reach ~-29 dBFS RMS or it is inaudible on a phone speaker
 VOICE_VOLUME = 1.0
-CHIME_VOLUME = 3.0    # lavfi sine is -18 dBFS and the fade averages it lower; this lands ~12 dB over the bed
+CHIME_VOLUME = 1.3    # per note; lavfi sine is -18 dBFS and the fade averages it lower
+CHIME_DECAY = 2.2
+CHIME_NOTES = ((1046.5, 0.0), (1318.5, 0.16), (1568.0, 0.34), (2093.0, 0.55))   # Hz, seconds after the reveal
 
 
 class RenderError(RuntimeError):
@@ -77,6 +79,25 @@ def _dotted_mask(r: int) -> Image.Image:
     return m.resize((d, d), Image.LANCZOS)
 
 
+@lru_cache(maxsize=16)
+def _outline_dots(pts: tuple) -> tuple:
+    """Evenly spaced points (about 26px apart) round a closed polygon, for the dotted arena edge."""
+    import math
+    n = len(pts)
+    edges = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
+    total = sum(math.dist(a, b) for a, b in edges)
+    count = max(24, int(total / 26))
+    step, dots, walked, target = total / count, [], 0.0, 0.0
+    for a, b in edges:
+        length = math.dist(a, b)
+        while target < walked + length and len(dots) < count:
+            t = (target - walked) / length if length else 0.0
+            dots.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+            target += step
+        walked += length
+    return tuple(dots)
+
+
 def _paste_mask(img: Image.Image, mask: Image.Image, cx: float, cy: float, color) -> None:
     img.paste(color, (round(cx - mask.width / 2), round(cy - mask.height / 2)), mask)
 
@@ -107,6 +128,11 @@ def draw_frame(ops: list, base: Image.Image) -> Image.Image:
         elif kind == "dotted":
             _, x, y, r, col = op
             _paste_mask(img, _dotted_mask(int(r)), x, y, col)
+        elif kind == "poly":
+            _, _cx, _cy, pts, col = op
+            mask = _disc_mask(4)
+            for x, y in _outline_dots(pts):
+                _paste_mask(img, mask, x, y, col)
         elif kind == "cross":
             _, x, y, half, col, w = op
             dr.rectangle([x - half, y - w // 2, x + half, y + w // 2], fill=col)
@@ -153,14 +179,17 @@ def _audio_args(drill: Drill, bed: str | None, voice: list[tuple[float, str]],
         labels.append(f"[a{idx}]")
         idx += 1
     for t in drill.chimes:
-        inputs += ["-f", "lavfi", "-i", "sine=frequency=1175:duration=0.6:sample_rate=48000"]
-        ms = int(t * 1000)
-        graph.append(
-            f"[{idx}:a]afade=t=out:st=0.05:d=0.55,volume={CHIME_VOLUME},"
-            f"aformat=channel_layouts=stereo,adelay={ms}|{ms}[a{idx}]"
-        )
-        labels.append(f"[a{idx}]")
-        idx += 1
+        # A soft wind-chime flourish (four pentatonic notes, staggered, long decay)
+        # instead of one flat sine beep.
+        for hz, offset in CHIME_NOTES:
+            inputs += ["-f", "lavfi", "-i", f"sine=frequency={hz}:duration={CHIME_DECAY}:sample_rate=48000"]
+            ms = int((t + offset) * 1000)
+            graph.append(
+                f"[{idx}:a]afade=t=out:st=0.01:d={CHIME_DECAY - 0.1}:curve=exp,volume={CHIME_VOLUME},"
+                f"aformat=channel_layouts=stereo,adelay={ms}|{ms}[a{idx}]"
+            )
+            labels.append(f"[a{idx}]")
+            idx += 1
 
     if not labels:
         return [], "", None

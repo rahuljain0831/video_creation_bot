@@ -1,0 +1,103 @@
+name: Scheduled Eye-Training Drill
+
+on:
+  # Runs daily; run_scheduled_skillstotraineyes.py decides whether today is one
+  # of this week's two posting days (one Sat/Sun, one Tue/Wed/Thu — the exact
+  # day in each pair is picked per ISO week) and no-ops otherwise.
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Generate now regardless of the day gate'
+        required: false
+        default: 'false'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Validate required secrets
+        env:
+          OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
+          FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          IG_CREDS: ${{ secrets.SKILLSTOTRAINEYES_IG_CREDENTIALS }}
+        run: |
+          fail=0
+          [ -z "$OAUTH_TOKEN" ] && echo "::error::DRIVE_OAUTH_TOKEN not set" && fail=1
+          [ -z "$OAUTH_CREDS" ] && echo "::error::DRIVE_OAUTH_CREDENTIALS not set" && fail=1
+          [ -z "$FOLDER_ID" ]   && echo "::error::GOOGLE_DRIVE_FOLDER_ID not set" && fail=1
+          [ -z "$STATE_ID" ]    && echo "::error::GOOGLE_DRIVE_STATE_ID not set" && fail=1
+          [ -z "$BOT_TOKEN" ]   && echo "::error::TELEGRAM_BOT_TOKEN not set" && fail=1
+          [ -z "$IG_CREDS" ]    && echo "::error::SKILLSTOTRAINEYES_IG_CREDENTIALS not set" && fail=1
+          [ $fail -eq 1 ] && exit 1
+          echo "All required secrets present"
+
+      - name: Write credentials
+        env:
+          DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          DRIVE_OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
+          IG_CREDS_JSON: ${{ secrets.SKILLSTOTRAINEYES_IG_CREDENTIALS }}
+        run: |
+          # OAuth (not the service account): same reasoning as scheduled-generation.yml —
+          # the service account has no personal Drive quota, so a brand-new upload 403s.
+          echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
+          echo "$DRIVE_OAUTH_CREDS" > oauth_credentials.json
+          mkdir -p credentials
+          # Same credentials file backs both Instagram and Facebook — see
+          # social_config.json's skillstotraineyes_ig / skillstotraineyes_fb accounts.
+          echo "$IG_CREDS_JSON" > credentials/skillstotraineyes_ig.json
+
+      - name: Generate + publish (if today is a posting day)
+        env:
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_PENDING_ID: ${{ secrets.GOOGLE_DRIVE_PENDING_ID }}
+          GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
+          GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
+          GOOGLE_DRIVE_STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then FORCE_FLAG="--force"; fi
+          python scripts/run_scheduled_skillstotraineyes.py $FORCE_FLAG
+
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'EOF'
+          import os, json, urllib.request
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat  = os.environ["TELEGRAM_CHAT_ID"]
+          url   = os.environ["RUN_URL"]
+          msg   = f"❌ *scheduled-skillstotraineyes failed*\n{url}"
+          data  = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "Markdown"}).encode()
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data, headers={"Content-Type": "application/json"}
+          ))
+          EOF

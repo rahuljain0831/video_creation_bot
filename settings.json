@@ -251,18 +251,16 @@
       "standalone": true,
       "human_policy": "none",
       "levels": true,
-      "publish_platforms": ["instagram"],
+      "publish_platforms": ["instagram", "facebook"],
       "audio_modes": ["muted", "voiceover"],
-      "bed_pool": ["musicbox"],
+      "bed_pool": ["ocean", "forest", "windchimes", "bowls", "kalimba"],
       "disclaimer": "Just an eye exercise for fun. Not medical advice.",
-      "hashtags": ["eyeexercise", "eyetraining", "focus", "brainteaser", "eyes", "reels"],
       "hidden_object": {
-        "enabled": true,
-        "hashtags": ["findit", "hiddenobject", "spotit", "visualpuzzle", "brainteaser"]
+        "enabled": true
       },
       "tts": {
-        "voice_edge": "en-US-AriaNeural",
-        "rate": "-5%",
+        "voice_edge": "en-US-EmmaMultilingualNeural",
+        "rate": "-4%",
         "volume": "+0%",
         "pitch": "+0Hz"
       }

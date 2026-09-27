@@ -45,6 +45,14 @@
       "enabled": true,
       "exclusive": true,
       "credentials_file": "credentials/skillstotraineyes_ig.json"
+    },
+    {
+      "account_id": "skillstotraineyes_fb",
+      "platform": "facebook",
+      "niche": "skillstotraineyes",
+      "enabled": true,
+      "exclusive": true,
+      "credentials_file": "credentials/skillstotraineyes_ig.json"
     }
   ]
 }

@@ -90,6 +90,12 @@ def _variation(seed, family, drill, hook, question, caption_body, mode) -> dict:
             "caption": caption_body, "audio_mode": mode}
 
 
+def _hashtags(bank_id: str, seed: int) -> dict[str, list[str]]:
+    """Per-platform picks; schedule_video() takes the one for the platform it rotates to."""
+    from pipeline.social_captions import pick_hashtags
+    return {p: pick_hashtags(bank_id, p, seed) for p in ("instagram", "facebook")}
+
+
 def _make_audio(drill, niche: dict, mode: str, seed: int, video_id: int, cfg):
     """Returns (bed_path, [(start_s, voice_path)])."""
     from pipeline.horror_audio import build_ambience
@@ -148,12 +154,11 @@ def _run_image_post(args, cfg, niche, conn) -> None:
             log.info("--no-publish: image left at %s", image_path)
             return
         from pipeline.publisher import publish
-        ho_cfg = niche.get("hidden_object", {})
         publish(
             video_id, image_path, niche, conn, cfg,
             platforms=["instagram"], schedule_time=args.schedule_time,
             title=f"Find the {scene['target']}", caption=caption,
-            hashtags=[f"#{t}" for t in ho_cfg.get("hashtags", niche.get("hashtags", []))],
+            hashtags=_hashtags("skillstotraineyes_hidden", seed),
             media_type="image",
             notify_text=f"{niche['label']}: hidden object ({scene['target']}), scheduled",
         )
@@ -292,7 +297,7 @@ def main() -> None:
                 video_id, output_path, niche, conn, cfg,
                 platforms=platforms, schedule_time=args.schedule_time,
                 title=hook, caption=caption,
-                hashtags=[f"#{t}" for t in niche.get("hashtags", [])],
+                hashtags=_hashtags("skillstotraineyes", seed),
                 notify_text=f"{niche['label']}: {family} ({drill.duration:.0f}s), "
                             f"scheduled on {', '.join(platforms)}",
             )
