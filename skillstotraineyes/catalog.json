@@ -65,10 +65,10 @@
     },
     {
       "id": "slow_pursuit", "name": "Constant Slow Pursuit",
-      "about": "A dot creeps along a visible Lissajous curve. Stay glued to it without blinking ahead.",
+      "about": "A dot creeps along a shape outline. Stay glued to it without blinking ahead.",
       "builder": "path_pursuit", "mode": "watch",
-      "knobs": {"path": "lissajous"},
-      "knob_names": ["tempo", "guide"], "presets": []
+      "knobs": {"path": "random"}, "no_level": true,
+      "knob_names": [], "presets": []
     },
     {
       "id": "sine_pursuit", "name": "Sine-Wave Pursuit",

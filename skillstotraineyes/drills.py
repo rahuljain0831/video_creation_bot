@@ -569,10 +569,98 @@ def _make_path(kind: str, rng: random.Random, period: float):
             return (CX + AX * _tri((k + slide) / n),
                     CY + AY * (2 * (k / (n - 1)) - 1))
         return step_path
+    if kind == "polygon":
+        # Basic shape: a regular n-gon (square/pentagon/hexagon/octagon), traced edge to edge.
+        n = rng.choice([4, 5, 6, 8])
+        rot = rng.uniform(0, tau)
+        pts = [(CX + AX * math.cos(tau * i / n + rot), CY + AY * math.sin(tau * i / n + rot))
+               for i in range(n)]
+        return _polyline_path(pts, period)
+    if kind == "star":
+        # Complex shape: alternating outer/inner radius across 2n vertices.
+        n = rng.choice([5, 6, 7, 8])
+        inner = rng.uniform(0.4, 0.55)
+        rot = rng.uniform(0, tau)
+        pts = [(CX + AX * (1.0 if i % 2 == 0 else inner) * math.cos(tau * i / (2 * n) + rot),
+                CY + AY * (1.0 if i % 2 == 0 else inner) * math.sin(tau * i / (2 * n) + rot))
+               for i in range(2 * n)]
+        return _polyline_path(pts, period)
+    if kind == "rose":
+        # Complex shape: petal curve r = cos(k*theta), k petals (or 2k if k even).
+        kpet = rng.choice([2, 3, 4, 5, 6])
+
+        def rose_path(t):
+            theta = tau * t / period
+            r = math.cos(kpet * theta)
+            return (CX + AX * r * math.cos(theta), CY + AY * r * math.sin(theta))
+        return rose_path
+    if kind == "spiral":
+        # Complex shape: radius breathes in/out smoothly while angle keeps winding.
+        spins = rng.choice([2, 3, 4])
+
+        def spiral_path(t):
+            u = t / period
+            rad = 0.25 + 0.75 * (0.5 - 0.5 * math.cos(tau * u))
+            ang = tau * spins * u
+            return (CX + AX * rad * math.cos(ang), CY + AY * rad * math.sin(ang))
+        return spiral_path
+    if kind == "spirograph":
+        # Complex shape: hypotrochoid (Spirograph). R/r/d picked so the loop closes
+        # within one period; normalized by R so it stays inside the arena.
+        big_r, small_r = rng.choice([(5, 3), (7, 2), (8, 3), (5, 2)])
+        d = small_r * rng.uniform(0.6, 1.0)
+
+        def spiro_path(t):
+            a = tau * small_r * t / period
+            rr = big_r - small_r
+            x = rr * math.cos(a) + d * math.cos(rr / small_r * a)
+            y = rr * math.sin(a) - d * math.sin(rr / small_r * a)
+            return (CX + AX * x / big_r, CY + AY * y / big_r)
+        return spiro_path
+    if kind == "superellipse":
+        # Complex shape: exponent morphs the loop between diamond, circle and square.
+        n = rng.uniform(1.5, 4.5)
+
+        def superellipse_path(t):
+            theta = tau * t / period
+            c, s = math.cos(theta), math.sin(theta)
+            x = math.copysign(abs(c) ** (2 / n), c)
+            y = math.copysign(abs(s) ** (2 / n), s)
+            return (CX + AX * x, CY + AY * y)
+        return superellipse_path
+    if kind == "blob":
+        # Complex shape: an organic wobble — random radii at n angles, eased between.
+        n = rng.randint(5, 9)
+        radii = [rng.uniform(0.55, 1.0) for _ in range(n)]
+
+        def blob_path(t):
+            theta = tau * t / period
+            u = (theta / tau) % 1.0 * n
+            i = int(u) % n
+            f = u - int(u)
+            ease = 0.5 - 0.5 * math.cos(math.pi * f)
+            r = radii[i] * (1 - ease) + radii[(i + 1) % n] * ease
+            return (CX + AX * r * math.cos(theta), CY + AY * r * math.sin(theta))
+        return blob_path
     raise ValueError(f"unknown path {kind!r}")
 
 
+def _polyline_path(pts: list[tuple[float, float]], period: float):
+    """Walk a closed list of vertices at constant speed, one lap per period."""
+    m = len(pts)
+
+    def p(t):
+        u = (t / period) % 1.0 * m
+        i = int(u) % m
+        a, b = pts[i], pts[(i + 1) % m]
+        f = u - int(u)
+        return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+    return p
+
+
 _PATHS = ("sine", "zigzag", "triangle", "lemniscate", "lissajous", "steps")
+_PATHS_COMPLEX = ("polygon", "star", "rose", "spiral", "spirograph", "superellipse", "blob")
+_PATHS_ALL = _PATHS + _PATHS_COMPLEX
 
 
 def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
@@ -586,6 +674,9 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
     entry_cfg = entry_cfg or entry("slow_pursuit")
     rng = random.Random(seed)
     accent = rng.choice(ACCENTS)
+    no_level = bool(entry_cfg.get("no_level"))   # plain eye exercise: no difficulty scaling at all
+    if no_level:
+        level = None
 
     k = {"tempo": 1.0, "guide": "visible", "occlude": 0, "ghosts": 0, "shift": 0.0,
          **entry_cfg["knobs"]}
@@ -593,6 +684,8 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
         k.update(_knobs(entry_cfg, level, rng))
 
     kind = k.get("path", "sine")
+    if kind == "random":
+        kind = rng.choice(_PATHS_ALL)
     period = round(6.5 / float(k["tempo"]), 3)
     body = rng.choice([12, 15, 18])
     hook_until = 3.0
@@ -622,14 +715,14 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
 
     ghosts = int(k["ghosts"])
     bands = [(CY - 180, 150), (CY + 240, 130)][:int(k["occlude"])]
-    hook = _text(text, "hook", "Follow the dot with your eyes")
+    hook = _text(text, "hook", "Follow the ball with your eyes!")
     question = _text(text, "question", "Did you keep up?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
-    badge = _badge(level)
+    badge = "EYE EXERCISE"
 
     def ops(f: int) -> list:
         t = f / FPS
-        out = [("dotted", CX, CY, 470, DIM)] + list(guide_dots)
+        out = list(guide_dots)
         for by, bh in bands:
             out.append(("rect", CX, by, 470, bh, BG))
         if hook_until - 0.5 <= t < t_q:
