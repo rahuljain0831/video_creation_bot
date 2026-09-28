@@ -103,6 +103,7 @@
     {
       "id": "scary_stories",
       "label": "Scary Stories",
+      "enabled": false,
       "image_source": "generate",
       "renderer": "remotion",
       "script_schema": "cinematic_scary",
@@ -157,6 +158,7 @@
     {
       "id": "heists",
       "label": "Heists",
+      "enabled": false,
       "image_source": "generate",
       "allow_local_generation": true,
       "tone": "tense, stylish, high-stakes",
