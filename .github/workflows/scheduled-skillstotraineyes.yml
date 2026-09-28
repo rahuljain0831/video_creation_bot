@@ -1,13 +1,19 @@
 name: Scheduled Eye-Training Drill
 
 on:
-  # Runs daily; run_scheduled_skillstotraineyes.py decides whether today is one
-  # of this week's two posting days (one Sat/Sun, one Tue/Wed/Thu — the exact
-  # day in each pair is picked per ISO week) and no-ops otherwise.
   schedule:
+    # Daily; run_scheduled_skillstotraineyes.py decides whether today is one of
+    # this week's two `tracking` posting days (one Sat/Sun, one Tue/Wed/Thu —
+    # the exact day in each pair is picked per ISO week) and no-ops otherwise.
     - cron: '0 4 * * *'
+    # Weekly, fixed: slow_pursuit, no day gate. Wednesday 19:00 IST = 13:30 UTC.
+    - cron: '30 13 * * 3'
   workflow_dispatch:
     inputs:
+      family:
+        description: 'Drill family to force (default: tracking)'
+        required: false
+        default: 'tracking'
       force:
         description: 'Generate now regardless of the day gate'
         required: false
@@ -78,9 +84,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
         run: |
+          FAMILY="tracking"
           FORCE_FLAG=""
+          NO_LLM_FLAG=""
+          if [ -n "${{ github.event.inputs.family }}" ]; then FAMILY="${{ github.event.inputs.family }}"; fi
+          if [ "${{ github.event.schedule }}" = "30 13 * * 3" ]; then FAMILY="slow_pursuit"; FORCE_FLAG="--force"; NO_LLM_FLAG="--no-llm"; fi
           if [ "${{ github.event.inputs.force }}" = "true" ]; then FORCE_FLAG="--force"; fi
-          python scripts/run_scheduled_skillstotraineyes.py $FORCE_FLAG
+          python scripts/run_scheduled_skillstotraineyes.py --family "$FAMILY" $FORCE_FLAG $NO_LLM_FLAG
 
       - name: Notify failure
         if: failure()

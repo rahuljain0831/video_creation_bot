@@ -102,6 +102,46 @@ _MAX_MANIFEST_RETRIES = 3   # manifest-level retries (each gets UPLOAD_MAX_ATTEM
 _RETRY_DELAY_HOURS = 6
 
 
+def _load_state_db(service):
+    """Pull the persistent schedule DB from Drive state/ so posted rows can be
+    marked done. Without this, upload_schedule.status/platform_post_id never
+    get set, and engagement_tracker.fetch_engagement() has nothing to query —
+    it filters on exactly those two columns. Returns (conn, db_path, db_file_id),
+    all None if the DB can't be reached (degrades to "upload works, engagement
+    tracking doesn't" rather than failing the upload)."""
+    from pipeline.drive_storage import _get_subfolder, _retry_drive, download_from_drive
+    from config import cfg
+
+    try:
+        state_folder_id = _get_subfolder("state")
+        req = service.files().list(
+            q=f"'{state_folder_id}' in parents and name='schedule_db.sqlite' and trashed=false",
+            spaces="drive", fields="files(id)",
+        )
+        files = _retry_drive(req.execute).get("files", [])
+    except Exception as e:
+        log.warning("Could not reach Drive state folder (%s) — schedule DB won't be updated", e)
+        return None, None, None
+
+    if not files:
+        log.warning("No schedule_db.sqlite on Drive state — schedule DB won't be updated")
+        return None, None, None
+
+    db_path = Path(cfg.paths["db"])
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    download_from_drive(files[0]["id"], db_path)
+    return sqlite3.connect(str(db_path)), db_path, files[0]["id"]
+
+
+def _save_state_db(service, db_path, db_file_id) -> None:
+    from googleapiclient.http import MediaFileUpload
+    from pipeline.drive_storage import _retry_drive
+
+    media = MediaFileUpload(str(db_path))
+    _retry_drive(service.files().update(fileId=db_file_id, media_body=media).execute)
+    log.info("Schedule DB synced back to Drive state")
+
+
 def _write_retry_manifest(manifest: dict, retry_count: int) -> None:
     """Write a new manifest to Drive pending/ with updated scheduled_at and retry_count."""
     from pipeline.drive_storage import upload_to_drive
@@ -121,7 +161,7 @@ def _write_retry_manifest(manifest: dict, retry_count: int) -> None:
              schedule_id, retry_count, _MAX_MANIFEST_RETRIES)
 
 
-def process_schedule(manifest, manifest_drive_id, service):
+def process_schedule(manifest, manifest_drive_id, service, conn=None):
     """Process a single schedule manifest. Returns True on success."""
     from pipeline.drive_storage import download_from_drive, move_drive_file
 
@@ -207,6 +247,16 @@ def process_schedule(manifest, manifest_drive_id, service):
             success = True
             post_id = r.get("video_id") or r.get("media_id", "")
 
+    if conn is not None:
+        try:
+            conn.execute(
+                "UPDATE upload_schedule SET status=?, platform_post_id=? WHERE id=?",
+                ("done" if success else "failed", post_id or None, schedule_id),
+            )
+            conn.commit()
+        except Exception as e:
+            log.warning("Failed to update schedule DB row id=%d: %s", schedule_id, e)
+
     # Move video on Drive
     dest = "uploaded" if success else "failed"
     try:
@@ -261,6 +311,7 @@ def main():
     from pipeline.drive_storage import _build_service
 
     service = _build_service()
+    conn, db_path, db_file_id = _load_state_db(service)
 
     if len(sys.argv) > 1 and sys.argv[1]:
         # Specific schedule_id mode
@@ -282,7 +333,9 @@ def main():
             download_from_drive(f["id"], local)
             data = json.loads(local.read_text())
             if data.get("schedule_id") == schedule_id:
-                success = process_schedule(data, f["id"], service)
+                success = process_schedule(data, f["id"], service, conn)
+                if conn is not None:
+                    _save_state_db(service, db_path, db_file_id)
                 sys.exit(0 if success else 1)
 
         log.warning("No manifest found for schedule_id=%d — likely processed by concurrent run", schedule_id)
@@ -300,8 +353,11 @@ def main():
         log.info("Found %d due uploads", len(due))
         failures = 0
         for manifest, drive_id in due:
-            if not process_schedule(manifest, drive_id, service):
+            if not process_schedule(manifest, drive_id, service, conn):
                 failures += 1
+
+        if conn is not None:
+            _save_state_db(service, db_path, db_file_id)
 
         log.info("Done: %d processed, %d failed", len(due), failures)
         sys.exit(1 if failures else 0)

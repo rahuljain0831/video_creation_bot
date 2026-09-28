@@ -13,8 +13,13 @@ skillstotraineyes/drills.py (pick_level / pick_shape) — this script only decid
 Same DB pull-from-Drive / push-back-to-Drive pattern as run_scheduled_generation.py,
 so topic/uniqueness history and quota usage survive between ephemeral runs.
 
-Usage: python scripts/run_scheduled_skillstotraineyes.py [--force]
+Usage: python scripts/run_scheduled_skillstotraineyes.py [--family FAMILY] [--force]
+
+The Sat/Sun + Tue/Wed/Thu day gate only applies to the default `tracking`
+family — a non-tracking family is assumed to have its own cron cadence
+(one trigger per family) and always generates when invoked.
 """
+import argparse
 import logging
 import random
 import subprocess
@@ -53,8 +58,13 @@ def is_posting_day(today: datetime | None = None) -> bool:
 
 
 def main() -> None:
-    force = "--force" in sys.argv
-    if not force and not is_posting_day():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--family", default="tracking")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--no-llm", action="store_true")
+    args = parser.parse_args()
+
+    if args.family == "tracking" and not args.force and not is_posting_day():
         return
 
     from googleapiclient.http import MediaFileUpload
@@ -83,10 +93,10 @@ def main() -> None:
     else:
         log.info("No DB on Drive state yet — %s starts fresh", db_path)
 
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "run_skillstotraineyes.py"), "--family", "tracking"],
-        cwd=str(ROOT),
-    )
+    cmd = [sys.executable, str(ROOT / "run_skillstotraineyes.py"), "--family", args.family]
+    if args.no_llm:
+        cmd.append("--no-llm")
+    result = subprocess.run(cmd, cwd=str(ROOT))
 
     if db_path.exists():
         media = MediaFileUpload(str(db_path))
