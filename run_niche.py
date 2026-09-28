@@ -111,6 +111,7 @@ def _fetch_scene_images(
     from pipeline.image_gen import build_style_token, generate_image, ImageGenError
     from pipeline.image_policy import LocalGenerationBlocked
     from pipeline.image_post import ensure_render_size, is_worth_cutting_to
+    from pipeline.chart_gen import get_chart_image, ChartGenError
 
     images_dir = str(Path(cfg.paths["images"]) / run_slug)
     render_w, render_h = (cfg.video.get("resolution") or [1080, 1920])[:2]
@@ -123,6 +124,7 @@ def _fetch_scene_images(
     scene_image_paths: list[str] = []
     _used_library_ids: set[int] = set()   # dedup: library image IDs used this video
     _used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
+    _used_chart_tickers: set[str] = set() # dedup: tickers used this video (chart_gen)
 
     manual_dir = Path(images_dir) / "manual"
 
@@ -166,6 +168,16 @@ def _fetch_scene_images(
                     fallback_query=fallback_q,
                     used_photo_ids=_used_pexels_ids,
                 )
+            elif image_source == "chart_gen":
+                img_path = get_chart_image(
+                    image_prompt=scene["image_prompt"],
+                    niche=niche,
+                    output_dir=images_dir,
+                    scene_index=i,
+                    cfg=cfg,
+                    seed=video_id * 1000 + i,
+                    used_tickers=_used_chart_tickers,
+                )
             else:
                 img_row = find_best_image_for_scene(
                     scene["image_prompt"], niche, conn, cfg,
@@ -188,6 +200,9 @@ def _fetch_scene_images(
             return None
         except PexelsError as e:
             log.error("Pexels image fetch failed for scene %d: %s", i, e)
+            return None
+        except ChartGenError as e:
+            log.error("Chart generation failed for scene %d: %s", i, e)
             return None
         except LocalGenerationBlocked as e:
             log.error("Image generation blocked by niche policy for scene %d: %s", i, e)

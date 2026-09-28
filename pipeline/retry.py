@@ -98,6 +98,7 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         from pipeline.image_policy import (
             GENERATED_SOURCES, LocalGenerationBlocked, is_procedural, resolve_image_source,
         )
+        from pipeline.chart_gen import get_chart_image, ChartGenError
 
         images_dir = str(Path(cfg.paths["images"]) / run_slug)
         scene_image_paths = []
@@ -106,6 +107,7 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
         is_generated = (not procedural) and image_source in GENERATED_SOURCES
         used_library_ids: set[int] = set()   # dedup: library image IDs used this video
         used_pexels_ids: set[int] = set()    # dedup: pexels photo IDs used this video
+        used_chart_tickers: set[str] = set() # dedup: tickers used this video (chart_gen)
 
         if procedural:
             log.info("run_retry: procedural niche — skipping image stage")
@@ -131,6 +133,16 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
                         fallback_query=fallback_q,
                         used_photo_ids=used_pexels_ids,
                     )
+                elif image_source == "chart_gen":
+                    img_path = get_chart_image(
+                        image_prompt=scene["image_prompt"],
+                        niche=niche,
+                        output_dir=images_dir,
+                        scene_index=i,
+                        cfg=cfg,
+                        seed=video_id * 1000 + i,
+                        used_tickers=used_chart_tickers,
+                    )
                 else:
                     img_row = find_best_image_for_scene(
                         scene["image_prompt"], niche, conn, cfg,
@@ -147,7 +159,7 @@ def run_retry(original_video_id: int, feedback: str, cfg) -> int:
                         preselected_row=img_row if img_row else None,
                         used_image_ids=used_library_ids,
                     )
-            except (LibraryEmptyError, PexelsError, ImageGenError, LocalGenerationBlocked) as e:
+            except (LibraryEmptyError, PexelsError, ImageGenError, LocalGenerationBlocked, ChartGenError) as e:
                 raise RuntimeError(f"Image fetch failed scene {i}: {e}") from e
             scene_image_paths.append(img_path)
 
