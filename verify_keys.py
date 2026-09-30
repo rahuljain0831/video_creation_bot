@@ -51,23 +51,6 @@ except Exception as e:
     check("Google AI Studio (Vision/LLM)", False, str(e))
 
 
-# ── Groq (LLM script generation) ──────────────────────────────────────────────
-groq_key = os.getenv("GROQ_API_KEY", "")
-try:
-    r = requests.get(
-        "https://api.groq.com/openai/v1/models",
-        headers={"Authorization": f"Bearer {groq_key}"},
-        timeout=10,
-    )
-    if r.status_code == 200:
-        models = r.json().get("data", [])
-        check("Groq (LLM)", True, f"{len(models)} models accessible")
-    else:
-        check("Groq (LLM)", False, f"HTTP {r.status_code}")
-except Exception as e:
-    check("Groq (LLM)", False, str(e))
-
-
 # ── Cerebras (LLM fallback) ───────────────────────────────────────────────────
 cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
 try:

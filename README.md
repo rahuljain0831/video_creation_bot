@@ -14,7 +14,7 @@ Prompt-driven pipeline: pick a niche + optional story seed → produces a 90-180
 You run the script and choose a category (niche) like "Mythology". Optionally give a story seed like "The story of Shiva and Parvati". If you skip the seed, the AI picks a story.
 
 **Step 2 — AI writes the script**
-An LLM (Groq → Cerebras → Google Gemini → local Ollama) writes a structured story broken into 12-25 scenes. Each scene gets: narration text (what the narrator says) and an image description (what picture should appear). All decisions are saved to the database *before* any images are looked up.
+An LLM (Cerebras → Google Gemini → local Ollama) writes a structured story broken into 12-25 scenes. Each scene gets: narration text (what the narrator says) and an image description (what picture should appear). All decisions are saved to the database *before* any images are looked up.
 
 **Step 3 — Best matching image is selected per scene**
 For each scene, the system identifies the deity from the image description, queries your image library, and picks the best match using tag overlap. If no deity is detected, it falls back to full-text search, then tradition filter, then random. No AI image generation — images come from your curated library. For non-mythology niches, images are AI-generated via cloud providers (Gemini, Together AI, HuggingFace, Pollinations) or fetched from Pexels stock photos.
@@ -78,8 +78,7 @@ python ingest_library.py --folder /path/to/your/images --tradition hindu
 
 | Key | Used for |
 |---|---|
-| `GROQ_API_KEY` | LLM script generation (primary) |
-| `CEREBRAS_API_KEY` | LLM (fallback) |
+| `CEREBRAS_API_KEY` | LLM script generation (primary) |
 | `GOOGLE_AI_STUDIO_API_KEY` | LLM fallback + Gemini Vision (image analysis during ingest) |
 | `TELEGRAM_BOT_TOKEN` | Review bot |
 | `TELEGRAM_CHAT_ID` | Review bot |
@@ -225,7 +224,7 @@ Add to `niches[]` in `settings.json`. Available immediately. Include `image_sour
 
 ## Quota tracking
 
-LLM providers (Groq, Cerebras) have daily call limits tracked in SQLite:
+LLM providers (Cerebras, etc.) have daily call limits tracked in SQLite:
 
 - **Pre-call check:** if today's usage is at the limit, skip that provider and try the next
 - **Post-call log:** every attempt is recorded with timestamp and error code
@@ -244,7 +243,7 @@ skillstotraineyes/        — sim.py (physics), drills.py (6 templates), rendere
 config.py                 — merges .env + settings.json into cfg singleton
 settings.json             — all tunables (niches, video config, LLM order, library settings)
 quota.json                — LLM provider daily limits and reset schedules
-llm_router.py             — LLM fallback chain: Groq → Cerebras → Gemini → Ollama
+llm_router.py             — LLM fallback chain: Cerebras → Gemini → Ollama
 ingest_library.py         — CLI to analyze and store deity images into the library
 list_library.py           — CLI to inspect library coverage by deity
 
