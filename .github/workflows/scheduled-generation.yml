@@ -3,10 +3,10 @@ name: Scheduled Video Generation
 on:
   # One niche per run, rotating across the day. scary_stories is excluded —
   # it needs the separate Remotion/Node toolchain (npm ci, Chrome headless
-  # shell), not covered by this workflow. mythology is disabled per standing
-  # project rule (see CLAUDE.md).
+  # shell), not covered by this workflow. mythology and heists are disabled
+  # per settings.json (see CLAUDE.md for mythology's standing rule).
   schedule:
-    - cron: '0 3 * * *'   # heists
+    - cron: '0 3 * * *'   # stock_market
     - cron: '0 9 * * *'   # space_science
     - cron: '0 15 * * *'  # ai_tech_tools
     - cron: '0 21 * * *'  # finance_facts
@@ -15,7 +15,7 @@ on:
       niche:
         description: 'Niche id to generate'
         required: true
-        default: 'heists'
+        default: 'stock_market'
 
 jobs:
   generate:
@@ -44,11 +44,11 @@ jobs:
             echo "id=${{ github.event.inputs.niche }}" >> "$GITHUB_OUTPUT"
           else
             case "${{ github.event.schedule }}" in
-              '0 3 * * *')  echo "id=heists" >> "$GITHUB_OUTPUT" ;;
+              '0 3 * * *')  echo "id=stock_market" >> "$GITHUB_OUTPUT" ;;
               '0 9 * * *')  echo "id=space_science" >> "$GITHUB_OUTPUT" ;;
               '0 15 * * *') echo "id=ai_tech_tools" >> "$GITHUB_OUTPUT" ;;
               '0 21 * * *') echo "id=finance_facts" >> "$GITHUB_OUTPUT" ;;
-              *) echo "id=heists" >> "$GITHUB_OUTPUT" ;;
+              *) echo "id=stock_market" >> "$GITHUB_OUTPUT" ;;
             esac
           fi
 
