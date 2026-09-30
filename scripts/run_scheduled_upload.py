@@ -57,7 +57,7 @@ def _is_transient(error: Exception) -> bool:
     """True for errors worth retrying (network, rate-limit, server error)."""
     msg = str(error).lower()
     # Auth errors are permanent — retrying won't help
-    if any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token")):
+    if any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token", "invalid_grant")):
         return False
     # File/config errors are permanent
     if isinstance(error, (FileNotFoundError, ValueError, json.JSONDecodeError)):
@@ -72,7 +72,7 @@ def _is_transient(error: Exception) -> bool:
 def _notify_token_alert(platform: str, error: Exception) -> None:
     """Send Telegram alert when upload fails with an auth error."""
     msg = str(error).lower()
-    if not any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token")):
+    if not any(x in msg for x in ("401", "403", "unauthorized", "forbidden", "invalid_token", "invalid_grant")):
         return
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")

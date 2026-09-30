@@ -36,13 +36,6 @@
       "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
       "notes": "NVIDIA NIM free credits. Estimate."
     },
-    "groq": {
-      "daily_limit": 14400,
-      "reset_interval": "daily",
-      "reset_time_utc": "00:00",
-      "unit_definition": "1 API call = 1 unit (LLM routing for script generation)",
-      "notes": "Free tier for LLM inference. No key configured currently."
-    },
     "openrouter": {
       "daily_limit": 200,
       "reset_interval": "daily",

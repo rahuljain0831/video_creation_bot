@@ -245,6 +245,34 @@
       }
     },
     {
+      "id": "stock_market",
+      "label": "Stock Market Tips",
+      "tone": "confident, clear, educational",
+      "image_source": "chart_gen",
+      "image_prompt_rules": "Each scene must teach exactly ONE of these chart concepts, and the image_prompt for that scene must contain the concept name VERBATIM (exact phrase, lowercase is fine): \"candlestick basics\", \"moving average crossover\", \"rsi overbought oversold\", \"volume spike\", \"support and resistance\", \"gap up down\", \"trend line breakout\". Pick freely across scenes but do not invent new concept names or combine two in one image_prompt. The chart image is generated separately from real market data to match whichever concept name you write — do not describe colors, art style, or a specific company; just name the concept plus a short plain-English gloss of what it means (e.g. \"support and resistance — the price level a stock keeps bouncing off\").",
+      "min_scenes": 10,
+      "max_scenes": 14,
+      "min_duration_sec": 60,
+      "max_duration_sec": 100,
+      "caption_style": {
+        "fontsize": 14,
+        "alpha": 0.0,
+        "margin_bottom_percent": 5,
+        "chunk_size": 4
+      },
+      "tts": {
+        "voice_edge": "en-US-ChristopherNeural",
+        "voice_pool_edge": [
+          "en-US-ChristopherNeural",
+          "en-US-EricNeural",
+          "en-US-GuyNeural"
+        ],
+        "rate": "+0%",
+        "volume": "+5%",
+        "pitch": "+0Hz"
+      }
+    },
+    {
       "id": "skillstotraineyes",
       "label": "Eye Training Drills",
       "tone": "calm, playful, encouraging",

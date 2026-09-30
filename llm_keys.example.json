@@ -14,12 +14,6 @@
       "cerebras/llama-3.3-70b"
     ]
   },
-  "groq": {
-    "api_key": "",
-    "models": [
-      "groq/llama-3.3-70b-versatile"
-    ]
-  },
   "xai": {
     "api_key": "",
     "models": [
