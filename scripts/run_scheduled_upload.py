@@ -137,6 +137,11 @@ def _save_state_db(service, db_path, db_file_id) -> None:
     from googleapiclient.http import MediaFileUpload
     from pipeline.drive_storage import _retry_drive
 
+    # The DB is WAL-mode: committed updates sit in the -wal file until
+    # checkpointed, and only the main file is uploaded. Without this every
+    # status/platform_post_id write of the run is silently dropped.
+    with sqlite3.connect(str(db_path)) as c:
+        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     media = MediaFileUpload(str(db_path))
     _retry_drive(service.files().update(fileId=db_file_id, media_body=media).execute)
     log.info("Schedule DB synced back to Drive state")
