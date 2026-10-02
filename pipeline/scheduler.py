@@ -200,8 +200,18 @@ def next_queue_slot(niche_id: str, platform: str, conn) -> datetime:
     (via pick_optimal_time's on_date mode) — this only changes *which day* is
     searched, not how a day's hour is chosen.
     """
+    # An exclusive account (social_config.json) has its own queue: its niche
+    # neither waits behind the shared backlog nor pushes the other niches back.
+    from pipeline.social_accounts import load_social_config
+    exclusive = sorted({a["niche"] for a in load_social_config().get("accounts", [])
+                        if a.get("exclusive")})
+    marks = ",".join("?" * len(exclusive))
+    scope = (f"niche_id = ?" if niche_id in exclusive
+             else f"niche_id NOT IN ({marks})" if exclusive else "1=1")
+    args = [niche_id] if niche_id in exclusive else exclusive
     tail_row = conn.execute(
-        "SELECT MAX(scheduled_at) FROM upload_schedule WHERE status='pending'"
+        f"SELECT MAX(scheduled_at) FROM upload_schedule WHERE status='pending' AND {scope}",
+        args,
     ).fetchone()
     if not tail_row or not tail_row[0]:
         return pick_optimal_time(niche_id, platform, conn)

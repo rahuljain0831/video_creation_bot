@@ -333,3 +333,18 @@ def test_invent_scene_no_llm_never_calls_it(monkeypatch):
         raise AssertionError("LLM called")
     monkeypatch.setattr(ho, "call_llm", boom)
     assert ho.invent_scene(3, [], None, use_llm=False) == ho.FALLBACK_SCENES[3 % len(ho.FALLBACK_SCENES)]
+
+
+def test_exclusive_niche_queue_ignores_shared_backlog():
+    import sqlite3
+    from datetime import datetime
+    from pipeline.scheduler import next_queue_slot
+    c = sqlite3.connect(":memory:")
+    c.execute("CREATE TABLE upload_schedule (niche_id TEXT, platform TEXT, scheduled_at TEXT, status TEXT)")
+    c.execute("CREATE TABLE time_performance (niche_id TEXT, platform TEXT, hour_utc INT, day_of_week INT, avg_views REAL, sample_count INT)")
+    c.execute("INSERT INTO upload_schedule VALUES ('space_science','instagram','2099-01-01 10:00:00','pending')")
+    eye = next_queue_slot("skillstotraineyes", "instagram", c)
+    assert eye < datetime(2099, 1, 1, tzinfo=eye.tzinfo)       # not behind the story backlog
+    story = next_queue_slot("space_science", "instagram", c)
+    c.execute("INSERT INTO upload_schedule VALUES ('skillstotraineyes','instagram','2099-06-01 10:00:00','pending')")
+    assert next_queue_slot("space_science", "instagram", c) == story  # eye queue doesn't push stories
