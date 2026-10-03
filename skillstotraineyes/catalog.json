@@ -67,7 +67,7 @@
       "id": "slow_pursuit", "name": "Constant Slow Pursuit",
       "about": "A dot creeps along a shape outline. Stay glued to it without blinking ahead.",
       "builder": "path_pursuit", "mode": "watch",
-      "knobs": {"path": "random"}, "no_level": true,
+      "knobs": {"path": "random", "tempo": 0.72}, "no_level": true,
       "knob_names": [], "presets": []
     },
     {

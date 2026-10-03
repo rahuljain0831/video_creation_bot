@@ -642,7 +642,62 @@ def _make_path(kind: str, rng: random.Random, period: float):
             r = radii[i] * (1 - ease) + radii[(i + 1) % n] * ease
             return (CX + AX * r * math.cos(theta), CY + AY * r * math.sin(theta))
         return blob_path
+    if kind in _PATHS_INTRICATE:
+        return _fit_path(_intricate_raw(kind, rng), period)
     raise ValueError(f"unknown path {kind!r}")
+
+
+_PATHS_INTRICATE = ("epitrochoid", "knot", "fourier", "rose_rational")
+
+
+def _intricate_raw(kind: str, rng: random.Random):
+    """Closed curve as raw g(u) -> (x, y), u in [0, 1); scaled to the arena by _fit_path."""
+    tau = 2 * math.pi
+    if kind == "epitrochoid":
+        # Looping outer-orbit Spirograph: d > r makes small loops along the way.
+        big_r, r = rng.choice([(5, 3), (7, 3), (6, 5), (4, 3), (8, 5)])
+        d = r * rng.uniform(1.2, 1.8)
+        return lambda u: ((big_r + r) * math.cos(tau * r * u) - d * math.cos((big_r + r) / r * tau * r * u),
+                          (big_r + r) * math.sin(tau * r * u) - d * math.sin((big_r + r) / r * tau * r * u))
+    if kind == "knot":
+        # Torus-knot shadow: the path crosses itself, so the eye must keep the dot, not the line.
+        p, q = rng.choice([(2, 3), (3, 4), (2, 5), (3, 5), (4, 5)])
+        return lambda u: ((2 + math.cos(q * tau * u)) * math.cos(p * tau * u),
+                          (2 + math.cos(q * tau * u)) * math.sin(p * tau * u))
+    if kind == "fourier":
+        # Random sum of harmonics: never the same shape twice.
+        ks = rng.sample(range(1, 8), 4)
+        ax = [rng.uniform(0.3, 1.0) / k for k in ks]
+        ay = [rng.uniform(0.3, 1.0) / k for k in ks]
+        px = [rng.uniform(0, tau) for _ in ks]
+        py = [rng.uniform(0, tau) for _ in ks]
+        return lambda u: (sum(a * math.cos(k * tau * u + p) for a, k, p in zip(ax, ks, px)),
+                          sum(a * math.sin(k * tau * u + p) for a, k, p in zip(ay, ks, py)))
+    if kind == "rose_rational":
+        # Rose with fractional petal count: overlapping petals, closes after d turns.
+        n, d = rng.choice([(3, 2), (5, 2), (5, 3), (7, 3), (7, 4)])
+
+        def rose(u):
+            th = tau * d * u
+            r = math.cos(n / d * th)
+            return (r * math.cos(th), r * math.sin(th))
+        return rose
+    raise ValueError(kind)
+
+
+def _fit_path(raw, period: float):
+    """Scale/centre a raw closed curve into the AX x AY arena and make it a function of time."""
+    pts = [raw(i / 600) for i in range(600)]
+    x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
+    y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
+    sx, sy = 2 * AX / (x1 - x0), 2 * AY / (y1 - y0)
+    s = min(sx, sy)   # uniform scale: keep the curve's own proportions
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+
+    def p(t):
+        x, y = raw((t / period) % 1.0)
+        return (CX + s * (x - mx), CY + s * (y - my))
+    return p
 
 
 def _polyline_path(pts: list[tuple[float, float]], period: float):
@@ -660,7 +715,7 @@ def _polyline_path(pts: list[tuple[float, float]], period: float):
 
 _PATHS = ("sine", "zigzag", "triangle", "lemniscate", "lissajous", "steps")
 _PATHS_COMPLEX = ("polygon", "star", "rose", "spiral", "spirograph", "superellipse", "blob")
-_PATHS_ALL = _PATHS + _PATHS_COMPLEX
+_PATHS_ALL = _PATHS + _PATHS_COMPLEX + _PATHS_INTRICATE
 
 
 def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
