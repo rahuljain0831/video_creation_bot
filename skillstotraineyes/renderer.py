@@ -143,6 +143,9 @@ def draw_frame(ops: list, base: Image.Image) -> Image.Image:
         elif kind == "rect":
             _, x, y, hw, hh, col = op
             dr.rectangle([x - hw, y - hh, x + hw, y + hh], fill=col)
+        elif kind == "image":
+            _, x, y, im = op
+            img.paste(im, (round(x - im.width / 2), round(y - im.height / 2)))
         elif kind == "text":
             _, s, x, y, size, col, *anchor = op
             font = _font(int(size))

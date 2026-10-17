@@ -94,10 +94,16 @@ def test_audio_length_matches_video(tmp_path):
 @pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize("level", LEVELS)
 def test_badge_shows_at_the_start(family, level):
+    """A no_level entry (e.g. slow_pursuit) shows its fixed "EYE EXERCISE" badge instead."""
     d = build(family, 3, level=level)
     first = [op[1] for op in d.ops(0) if op[0] == "text"]
-    assert LEVEL_LABEL[level] in first
-    assert d.level == level
+    no_level = bool(drills_mod.entry(family).get("no_level"))
+    if no_level:
+        assert "EYE EXERCISE" in first
+        assert d.level == ""
+    else:
+        assert LEVEL_LABEL[level] in first
+        assert d.level == level
 
 
 @pytest.mark.parametrize("family", FAMILIES)

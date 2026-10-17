@@ -11,6 +11,7 @@ Draw ops (all coordinates in the 1080x1920 frame):
     ("dotted", x, y, r, color)              dotted circle border
     ("cross",  x, y, half, color, width)
     ("square", x, y, half, color)
+    ("image",  x, y, pil_image)             pre-drawn RGB image, centred on x, y
     ("text",   s, x, y, size, color[, "top"])  centred, wrapped by the renderer;
                                             "top" puts the first line at y and grows downward
 
@@ -773,7 +774,7 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
     hook = _text(text, "hook", "Follow the ball with your eyes!")
     question = _text(text, "question", "Did you keep up?")
     cta = _text(text, "cta", DEFAULT_TEXT["cta"])
-    badge = "EYE EXERCISE"
+    badge = "EYE EXERCISE" if no_level else _badge(level)
 
     def ops(f: int) -> list:
         t = f / FPS
@@ -807,14 +808,14 @@ def path_pursuit(seed: int, text: dict | None = None, level: str | None = None,
                  level=level or "")
 
 
-def _grid_memory(*args, **kwargs) -> Drill:
-    # Late import: memory_drills imports its helpers from this module.
-    from skillstotraineyes.memory_drills import grid_memory
-    return grid_memory(*args, **kwargs)
+def _colour_plates(*args, **kwargs) -> Drill:
+    # Late import: colour_plates imports its helpers from this module.
+    from skillstotraineyes.colour_plates import colour_plates
+    return colour_plates(*args, **kwargs)
 
 
 BUILDERS = {
-    "grid_memory": _grid_memory,
+    "colour_plates": _colour_plates,
     "tracking": tracking,
     "pursuit_dual": pursuit_dual,
     "figure8": figure8,

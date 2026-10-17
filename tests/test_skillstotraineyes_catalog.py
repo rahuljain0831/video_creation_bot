@@ -36,7 +36,10 @@ def test_every_knob_name_is_real():
 
 
 def test_fixed_knob_values_are_legal():
+    """A no_level entry opts its pinned knobs out of the difficulty ladder entirely."""
     for e in load_catalog():
+        if e.get("no_level"):
+            continue
         for name, value in e["knobs"].items():
             if name in KNOBS:
                 assert value in dict(KNOBS[name]), f"{e['id']}: {name}={value!r}"
@@ -73,11 +76,14 @@ def test_knob_names_excludes_fixed_knobs():
 @pytest.mark.parametrize("drill_id", FAMILIES)
 @pytest.mark.parametrize("level", LEVELS)
 def test_every_entry_builds_at_every_level(drill_id, level):
+    """A no_level entry (e.g. slow_pursuit) ignores any level it's passed by design."""
+    no_level = bool(entry(drill_id).get("no_level"))
+    expect = "" if no_level else level
     for seed in (5, 6, 7, 8):
         d = build(drill_id, seed, level=level)
         assert 15 <= d.duration <= 30, f"{drill_id}/{level}/{seed} ran {d.duration}s"
-        assert d.level == level
-        assert d.params["level"] == level
+        assert d.level == expect
+        assert d.params["level"] == expect
 
 
 # {drill: {knob: (derived params keys, transform of the rolled value)}}.
@@ -111,7 +117,7 @@ def spy(monkeypatch):
 
 def test_every_catalog_knob_is_in_the_derived_table():
     for e in load_catalog():
-        if e["id"] not in ("pursuit_dual", "figure8", "grid_memory"):
+        if e["id"] not in ("pursuit_dual", "figure8", "colour_plates"):
             assert set(knob_names(e["id"])) <= set(DERIVED[e["id"]]), e["id"]
 
 

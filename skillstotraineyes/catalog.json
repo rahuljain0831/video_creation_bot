@@ -121,9 +121,9 @@
       "knob_names": ["tempo", "guide"], "presets": []
     },
     {
-      "id": "grid_memory", "name": "Grid Memory",
-      "about": "A grid lights up for a moment, then goes dark. Remember which cells were lit.",
-      "builder": "grid_memory", "mode": "challenge",
+      "id": "colour_plates", "name": "Colour Plates",
+      "about": "Plates of coloured dots, each hiding a number. Some are tuned so certain colour-blind eyes cannot see the number. Count how many you can read. A fun check, not a medical test.",
+      "builder": "colour_plates", "mode": "challenge",
       "knobs": {}, "knob_names": [], "presets": []
     }
   ]
