@@ -99,6 +99,15 @@ def test_pick_level_is_weighted_to_the_middle():
     assert picks.count("hard") > picks.count("god")
 
 
+def test_pick_track_level_leans_medium_and_stays_on_locked_levels():
+    from skillstotraineyes.difficulty import pick_track_level
+    picks = [pick_track_level(s) for s in range(2000)]
+    assert set(picks) == {"medium", "hard", "expert"}       # never "easy"/"god" badges
+    assert 0.55 < picks.count("medium") / len(picks) < 0.65
+    assert picks.count("hard") > picks.count("expert")
+    assert pick_track_level(7) == pick_track_level(7)
+
+
 def _entry_sets():
     from skillstotraineyes.drills import load_catalog, knob_names
     return {e["id"]: knob_names(e["id"]) for e in load_catalog() if knob_names(e["id"])}

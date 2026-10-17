@@ -190,7 +190,7 @@ def main() -> None:
 
     from config import cfg
     from db.init_db import init_db
-    from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL, pick_level
+    from skillstotraineyes.difficulty import LEVELS, LEVEL_LABEL, pick_level, pick_track_level
     from skillstotraineyes.drills import FAMILIES, build, entry, pick_family
 
     niche = _load_niche(cfg)
@@ -223,11 +223,17 @@ def main() -> None:
         family = pick_drill(seed, recent, cfg)
 
     recent_levels = [r["level"] for r in recent if r.get("level")]
-    level = args.level or pick_level(seed, recent_levels)
+    if family == "tracking":
+        # Medium-leaning, and a medium draw is never swapped for a preset (Swarm
+        # and Bullet are god/expert), so the lean survives PRESET_CHANCE.
+        level = args.level or pick_track_level(seed)
+        allow_preset = args.level is None and level != "medium"
+    else:
+        level = args.level or pick_level(seed, recent_levels)
+        allow_preset = args.level is None
 
     # Wording first, so the gate checks the drill that will actually be rendered.
     e = entry(family)
-    allow_preset = args.level is None
     base = build(family, seed, level=level, allow_preset=allow_preset)
     defaults = {"hook": base.voice[0][1], "question": base.voice[1][1],
                 "name": e["name"], "about": e["about"], "level_label": LEVEL_LABEL[level]}

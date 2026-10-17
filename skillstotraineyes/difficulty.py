@@ -146,3 +146,17 @@ def pick_level(seed: int, recent: list[str]) -> str:
     pool = [lv for lv in LEVELS if lv != last]
     weights = [LEVEL_WEIGHT[lv] for lv in pool]
     return random.Random(seed).choices(pool, weights=weights, k=1)[0]
+
+
+# Tracking's own three locked levels, leaning on medium: over the first eight
+# Reels the "60% can pass" badge averaged 2,098 plays against 1,348 for "25%"
+# (2026-10-17). Repeats are allowed: pick_level's no-repeat rule would cap
+# medium at half the posts, and it can also draw "easy"/"god", whose badges
+# ("100%"/"1% can pass") do not match tracking's physics.
+TRACK_LEVEL_WEIGHT = {"medium": 6, "hard": 3, "expert": 1}
+
+
+def pick_track_level(seed: int) -> str:
+    """Tracking's level: medium ~60%, hard ~30%, expert ~10%."""
+    return random.Random(seed).choices(
+        list(TRACK_LEVEL_WEIGHT), weights=list(TRACK_LEVEL_WEIGHT.values()), k=1)[0]
