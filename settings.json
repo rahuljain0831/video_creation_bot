@@ -207,6 +207,7 @@
     {
       "id": "ai_tech_tools",
       "label": "AI & Tech Tools",
+      "enabled": false,
       "tone": "sharp, practical, forward-looking",
       "art_style_prompt_suffix": "modern technology screen interface minimal cinematic",
       "image_source": "generate",
@@ -227,6 +228,7 @@
     {
       "id": "finance_facts",
       "label": "Finance Facts",
+      "enabled": false,
       "tone": "confident, clear, high-value",
       "art_style_prompt_suffix": "finance business city skyline charts cinematic",
       "image_source": "generate",
