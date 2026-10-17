@@ -4,6 +4,10 @@ Upload a video to a Facebook Page via the Graph API.
 Uses the same credentials file as Instagram (credentials/all_niches_ig.json)
 since the Page is linked to the same app. The user token is exchanged for a
 Page Access Token before uploading.
+
+Videos Facebook accepts as Reels (3-90s) are published as Reels: Reels are
+recommended to non-followers, plain page videos only reach followers (the eye
+page, 1 follower, saw 1-7 views per page video). Longer videos stay page videos.
 """
 
 import json
@@ -18,9 +22,14 @@ log = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
 
+RUPLOAD_BASE = "https://rupload.facebook.com/video-upload/v21.0"
+
 # Status polling config
 _POLL_INTERVAL_S = 5
 _POLL_MAX_ATTEMPTS = 120  # 10 minutes max
+
+# Facebook Reels accept 3-90s; anything else goes up as a page video.
+_REEL_MIN_S, _REEL_MAX_S = 3, 90
 
 
 def _refresh_token(data: dict, creds_path: Path) -> dict:
@@ -177,6 +186,79 @@ def _upload_video_direct(
     return video_id
 
 
+def _video_duration(video_path: Path) -> float | None:
+    """Seconds, from the container header (imageio-ffmpeg ships with moviepy). None if unreadable."""
+    try:
+        import imageio_ffmpeg
+        frames = imageio_ffmpeg.read_frames(str(video_path))
+        meta = next(frames)
+        frames.close()
+        return float(meta["duration"])
+    except Exception as exc:
+        log.warning("Could not read duration of %s: %s", video_path.name, exc)
+        return None
+
+
+def _upload_reel(
+    page_id: str,
+    page_token: str,
+    video_path: Path,
+    description: str,
+) -> str:
+    """Publish a Facebook Reel: start session, upload bytes to rupload, finish as PUBLISHED.
+
+    Returns the video ID.
+    """
+    start_resp = requests.post(
+        f"{GRAPH_API_BASE}/{page_id}/video_reels",
+        data={"upload_phase": "start", "access_token": page_token},
+        timeout=60,
+    )
+    if not start_resp.ok:
+        log.error("Facebook Reel start failed: %s", start_resp.text)
+    start_resp.raise_for_status()
+    video_id = start_resp.json().get("video_id")
+    if not video_id:
+        raise RuntimeError(f"Failed to start Reel upload: {start_resp.json()}")
+
+    file_size = video_path.stat().st_size
+    log.info("Reel session started: video_id=%s, uploading %d bytes...", video_id, file_size)
+    with open(video_path, "rb") as f:
+        upload_resp = requests.post(
+            f"{RUPLOAD_BASE}/{video_id}",
+            headers={
+                "Authorization": f"OAuth {page_token}",
+                "offset": "0",
+                "file_size": str(file_size),
+            },
+            data=f,
+            timeout=600,
+        )
+    if not upload_resp.ok:
+        log.error("Facebook Reel upload failed: %s", upload_resp.text)
+    upload_resp.raise_for_status()
+
+    finish_resp = requests.post(
+        f"{GRAPH_API_BASE}/{page_id}/video_reels",
+        data={
+            "upload_phase": "finish",
+            "video_id": video_id,
+            "video_state": "PUBLISHED",
+            "description": description,
+            "access_token": page_token,
+        },
+        timeout=60,
+    )
+    if not finish_resp.ok:
+        log.error("Facebook Reel finish failed: %s", finish_resp.text)
+    finish_resp.raise_for_status()
+    if not finish_resp.json().get("success", False):
+        raise RuntimeError(f"Reel publish failed: {finish_resp.json()}")
+
+    log.info("Reel published: video_id=%s", video_id)
+    return video_id
+
+
 def _poll_video_status(video_id: str, page_token: str) -> None:
     """Poll until the uploaded video is ready (not still processing)."""
     for attempt in range(1, _POLL_MAX_ATTEMPTS + 1):
@@ -225,9 +307,9 @@ def upload_video(
     """
     Upload a video to a Facebook Page.
 
-    Uses the resumable upload flow via the /{page_id}/videos endpoint.
-    The user access token from the credentials file is exchanged for a
-    Page Access Token before uploading.
+    3-90s videos are published as Reels (/{page_id}/video_reels); anything
+    else uses the resumable /{page_id}/videos flow. The user access token from
+    the credentials file is exchanged for a Page Access Token before uploading.
 
     Args:
         video_path: Path to mp4 file
@@ -261,21 +343,29 @@ def upload_video(
     # Exchange user token for page token
     page_token = _get_page_access_token(user_token, page_id)
 
-    log.info("Uploading video to Facebook Page %s: %s", page_id, video_path.name)
+    duration = _video_duration(video_path)
+    as_reel = duration is not None and _REEL_MIN_S <= duration <= _REEL_MAX_S
 
-    video_id = _upload_video_direct(
-        page_id=page_id,
-        page_token=page_token,
-        video_path=video_path,
-        title=title,
-        description=description,
-    )
+    log.info("Uploading %s to Facebook Page %s: %s (%ss)",
+             "Reel" if as_reel else "video", page_id, video_path.name, duration)
+
+    if as_reel:
+        # A Reel has no title field: lead with it, as the Instagram caption does.
+        text = description if not title or description.startswith(title) else f"{title}\n\n{description}"
+        video_id = _upload_reel(page_id, page_token, video_path, text)
+        url = f"https://www.facebook.com/reel/{video_id}"
+    else:
+        video_id = _upload_video_direct(
+            page_id=page_id,
+            page_token=page_token,
+            video_path=video_path,
+            title=title,
+            description=description,
+        )
+        url = f"https://www.facebook.com/{page_id}/videos/{video_id}"
 
     if wait_for_processing:
         _poll_video_status(video_id, page_token)
 
-    log.info(
-        "Facebook upload complete: https://www.facebook.com/%s/videos/%s",
-        page_id, video_id,
-    )
+    log.info("Facebook upload complete: %s", url)
     return video_id
