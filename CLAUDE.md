@@ -304,10 +304,19 @@ row into `upload_schedule`, and writes a `{schedule_id}_schedule.json` manifest 
 (polls the Drive `pending/` folder for due manifests every few hours,
 `scripts/run_scheduled_upload.py` with no args).
 
-**Engagement Tracker (`pipeline/engagement_tracker.py`):** Daily GitHub Actions cron fetches
-view/like counts from YouTube/Instagram/Facebook APIs for recent uploads, updates
-`upload_schedule` rows, and recalculates `time_performance` rolling averages. Adaptive
-scheduling kicks in after 3+ samples per slot.
+**Engagement Tracker (`pipeline/engagement_tracker.py`):** Daily GitHub Actions cron re-reads
+every upload done in the last 14 days (a Reel keeps gaining views for days, so the first number is
+never frozen), updates `engagement_views` / `engagement_likes`, stores everything the platform
+returned (reach, saves, shares, watch time, skip rate, YouTube average view %) in
+`engagement_json`, and recalculates `time_performance` rolling averages. Adaptive scheduling kicks
+in after 3+ samples per slot. `run_progress_report.py` shows a per-account "KPI (14d)" block.
+
+Each row is read with the **credentials of the account it was posted from** (the uploader's
+`_get_accounts_for_platform` routing), so the eye account's Reels use its own token. It needs read
+scopes the upload flow does not: `instagram_manage_insights` + `read_insights` on the Meta token,
+`youtube.readonly` + `yt-analytics.readonly` on YouTube (both auth scripts request them). Without
+them IG falls back to public likes/comments, FB to public views, and YouTube rows are skipped; a
+post with no numbers is left as it was, never zeroed.
 
 **Google Drive Storage (`pipeline/drive_storage.py`):** Service account auth. Videos go to
 `video-uploads/pending/` after approval, moved to `uploaded/` or `failed/` after platform
@@ -484,8 +493,10 @@ medical claims.
   before expiry; CI's copy does not persist the local auto-refresh. If several IG accounts share
   the token, pick the one labelled Skillstotraineyes in the menu and confirm `ig_user_id` in the
   saved file (the menu branch once returned name/id swapped — fixed).
-- Known limits: `engagement_tracker.py` reads one `INSTAGRAM_ACCESS_TOKEN`, so eye Reels' stats
-  are not fetched and adaptive scheduling will not learn for this niche. `--no-publish` leaves the
+- Hashtags: `pick_hashtags()` takes 5 for Instagram (its cap since Dec 2025) and 15 for Facebook.
+  `upload_all()` hands each uploader the raw description and each appends the tags once (it used
+  to pass a description that already had them, so every post carried each tag twice).
+- Known limits: `--no-publish` leaves the
   video `assembled`, and `scripts/schedule_all_platforms.py` picks up every `assembled` video —
   routing makes that safe, but delete or publish such rows deliberately.
 - Tests: `tests/test_skillstotraineyes_{sim,drills,flow}.py` (`-m slow` covers the real render,
@@ -529,7 +540,8 @@ Gemini (LLM fallback) and for Gemini Vision during image library ingestion.
 Ollama must be running locally (`http://localhost:11434`) for the local LLM fallback.
 
 Scheduler keys: `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`.
-Engagement keys: `INSTAGRAM_ACCESS_TOKEN`, `FACEBOOK_PAGE_ACCESS_TOKEN`.
+Engagement: read per account from `credentials/*.json` (CI writes them from the same secrets as
+`scheduled-upload.yml`); no separate token env vars.
 Image gen: `PEXELS_API_KEY`, `HF_API_TOKEN`.
 
 Output artifacts: `output/images/`, `output/audio/`, `output/video/`, `output/scripts/`.
@@ -587,7 +599,8 @@ pipeline/
   social_captions.py    — A/B caption generation for social uploads
   youtube_upload.py     — YouTube Data API v3 video upload
   instagram_upload.py   — Instagram Graph API reel publishing
-  facebook_upload.py    — Facebook Graph API video publishing
+  facebook_upload.py    — Facebook Graph API publishing: 3-90s videos as Reels
+                          (/video_reels, shown to non-followers), longer ones as page videos
   prompt_refiner.py     — LLM-based image prompt refinement (optional)
   retry.py              — exponential backoff retry decorator
 
