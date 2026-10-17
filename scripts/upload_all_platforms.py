@@ -125,7 +125,7 @@ def _upload_youtube(
     video_id = upload_video(
         video_path=video_path,
         title=title[:100],
-        description=description,
+        description=_build_description(title, description, hashtags),
         tags=[t.lstrip("#") for t in hashtags] if hashtags else [],
         privacy="public",
         credentials_file=creds_file,
@@ -250,7 +250,6 @@ def upload_all(
     cfg = load_social_config()
     results = []
     hashtags = hashtags or []
-    full_description = _build_description(title, description, hashtags)
 
     for platform, uploader in _PLATFORM_UPLOADERS.items():
         if platforms_filter and platform not in platforms_filter:
@@ -272,8 +271,9 @@ def upload_all(
                 platform, account["account_id"],
             )
             try:
+                # Raw description: each uploader appends the hashtags itself, exactly once.
                 result = uploader(
-                    video_path, title, full_description,
+                    video_path, title, description,
                     hashtags, account, dry_run, media_type,
                 )
                 results.append(result)

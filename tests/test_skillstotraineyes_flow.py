@@ -117,6 +117,41 @@ def test_real_social_config_wires_the_eye_account():
     assert "skillstotraineyes_ig" not in [a["account_id"] for a in other]
 
 
+def test_upload_all_puts_each_hashtag_once_per_platform(monkeypatch, tmp_path):
+    # upload_all used to hand the uploaders a description that already carried
+    # the tags, and upload_reel / the FB uploader appended them again: 30 on a 15-tag post.
+    import scripts.upload_all_platforms as uap
+    import pipeline.instagram_upload as ig
+    import pipeline.facebook_upload as fb
+    import pipeline.youtube_upload as yt
+
+    sent = {}
+    monkeypatch.setattr(ig, "upload_reel", lambda video_path, caption, hashtags, credentials_file:
+                        sent.setdefault("instagram", f"{caption}\n\n{' '.join(hashtags)}") and "m1")
+    monkeypatch.setattr(fb, "upload_video", lambda video_path, title, description, credentials_file:
+                        sent.setdefault("facebook", description) and "v1")
+    monkeypatch.setattr(yt, "upload_video", lambda **kw: sent.setdefault("youtube", kw["description"]) and "y1")
+    creds = tmp_path / "c.json"
+    creds.write_text("{}")
+    monkeypatch.setattr(uap, "ROOT", tmp_path)
+    monkeypatch.setattr(uap, "load_social_config", lambda: {
+        "platforms": {p: {"enabled": True} for p in ("youtube", "instagram", "facebook")},
+        "accounts": [{"account_id": p, "platform": p, "niche": "all", "enabled": True,
+                      "credentials_file": "c.json"} for p in ("youtube", "instagram", "facebook")],
+    })
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"0")
+
+    tags = ["#one", "#two"]
+    uap.upload_all(video, "Title", "Body text", tags, niche_id="scary_stories")
+
+    assert set(sent) == {"youtube", "instagram", "facebook"}
+    for platform, text in sent.items():
+        assert "Body text" in text, platform
+        for t in tags:
+            assert text.count(t) == 1, (platform, text)
+
+
 # ── publish(): instagram only, caption ships in the manifest ──────────────────
 
 def test_publish_schedules_only_requested_platforms(monkeypatch, tmp_path):

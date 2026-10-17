@@ -28,15 +28,15 @@ def _load_hashtag_banks() -> dict:
         _banks_cache = {}
     return _banks_cache
 
-# Most hashtags a post may carry. Instagram enforces 30; Facebook has no hard cap, so it
-# borrows Instagram's figure. `pick_hashtags` uses half of it.
-_MAX_HASHTAGS = {"instagram": 30, "facebook": 30}
+# Tags per post. Instagram has capped posts at 5 hashtags since Dec 2025; Facebook has no
+# hard cap and keeps the 15 the tracking drill was locked with.
+_PICK_COUNT = {"instagram": 5, "facebook": 15}
 
 
 def pick_hashtags(bank_id: str, platform: str, seed: int) -> list[str]:
-    """Random half of `platform`'s cap, drawn from `bank_id`'s bank. Same seed, same tags."""
+    """`platform`'s pick count, drawn from `bank_id`'s bank. Same seed, same tags."""
     bank = _load_hashtag_banks().get(bank_id, {}).get(platform, [])
-    count = min(len(bank), _MAX_HASHTAGS.get(platform, 0) // 2)
+    count = min(len(bank), _PICK_COUNT.get(platform, 0))
     return random.Random(seed).sample(bank, count)
 
 
@@ -44,7 +44,7 @@ _PLATFORMS = ("youtube", "instagram", "facebook", "tiktok", "pinterest", "linked
 
 _PLATFORM_SPECS = {
     "youtube":   "SEO-optimized description 200-300 chars, exactly 15 hashtags (YouTube ignores all if more than 15) — mix broad and niche tags",
-    "instagram": "casual/engaging 100-150 chars, exactly 29 hashtags (platform cap is 30 — stay one under) — mix viral, niche, and topic-specific tags for maximum reach",
+    "instagram": "casual/engaging 100-150 chars, exactly 5 hashtags (platform cap is 5) — the most specific, relevant tags only",
     "facebook":  "conversational 150-200 chars, 10-15 hashtags — mix trending and topic tags",
     "tiktok":    "punchy/trend-aware 80-150 chars, 20 hashtags — prioritize trending and FYP tags",
     "pinterest": "descriptive/searchable 150-200 chars, 25-30 hashtags — use keyword-rich and discovery tags",
@@ -52,7 +52,7 @@ _PLATFORM_SPECS = {
 }
 
 _TARGET_HASHTAG_COUNT = {
-    "youtube": 15, "instagram": 29, "facebook": 15,
+    "youtube": 15, "instagram": 5, "facebook": 15,
     "tiktok": 20, "pinterest": 30, "linkedin": 5,
 }
 
