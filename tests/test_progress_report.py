@@ -50,6 +50,23 @@ def test_kpi_block_groups_by_account_and_platform():
     assert "https://youtu.be/SCqGwqs5QPw" in msg
 
 
+def test_kpi_block_marks_unknown_views_instead_of_zero():
+    # Without instagram_manage_insights the tracker stores only public likes/comments:
+    # engagement_views stays NULL and the report must say so, not claim 0 views.
+    import run_progress_report as rpt
+    conn = _db()
+    for post_id, likes in (("m1", 30), ("m2", 14)):
+        conn.execute(
+            """INSERT INTO upload_schedule (platform, niche_id, scheduled_at, status, platform_post_id,
+               engagement_json) VALUES ('instagram', 'skillstotraineyes', datetime('now', '-2 days'),
+               'done', ?, ?)""",
+            (post_id, json.dumps({"likes": likes, "comments": 0})),
+        )
+    msg = rpt._fmt_report(rpt._gather_stats(conn))
+    assert "Skillstotraineyes [IG]: 2 posts | views n/a (needs insights permission) | avg 22.0 likes" in msg
+    assert "avg 0 views" not in msg
+
+
 def test_kpi_block_tolerates_unmigrated_db():
     import run_progress_report as rpt
     conn = sqlite3.connect(":memory:")

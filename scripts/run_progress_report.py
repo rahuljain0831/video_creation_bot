@@ -125,7 +125,8 @@ def _kpi_14d(conn: sqlite3.Connection) -> list[dict]:
     for r in rows:
         account = "Skillstotraineyes" if r["niche_id"] == "skillstotraineyes" else "Story niches"
         m = json.loads(r["engagement_json"])
-        m.update(views=r["engagement_views"] or 0, post_id=r["platform_post_id"], watch_s=_watch_seconds(m))
+        # views stays None when the platform gave none (public data has no IG views): unknown, not 0
+        m.update(views=r["engagement_views"], post_id=r["platform_post_id"], watch_s=_watch_seconds(m))
         groups.setdefault((account, r["platform"]), []).append(m)
 
     def avg(posts, key):
@@ -135,11 +136,12 @@ def _kpi_14d(conn: sqlite3.Connection) -> list[dict]:
     return [{
         "account": account, "platform": platform, "posts": len(posts),
         "avg_views": avg(posts, "views"),
+        "avg_likes": avg(posts, "likes"),
         "reach": sum(p.get("reach") or 0 for p in posts),
         "watch_s": avg(posts, "watch_s"),
         "skip_rate": avg(posts, "reels_skip_rate"),
         "view_pct": avg(posts, "avg_view_percentage"),
-        "best": max(posts, key=lambda p: p["views"]),
+        "best": max(posts, key=lambda p: p["views"] or 0),
     } for (account, platform), posts in sorted(groups.items())]
 
 
@@ -310,7 +312,11 @@ def _fmt_report(stats: dict) -> str:
         lines.append("<b>KPI (last 14 days)</b>")
         for k in stats["kpi_14d"]:
             emoji = _PLATFORM_EMOJI.get(k["platform"], "")
-            parts = [f"{k['posts']} posts", f"avg {k['avg_views']:,.0f} views"]
+            parts = [f"{k['posts']} posts",
+                     f"avg {k['avg_views']:,.0f} views" if k["avg_views"] is not None
+                     else "views n/a (needs insights permission)"]
+            if k["avg_likes"] is not None:
+                parts.append(f"avg {k['avg_likes']:.1f} likes")
             if k["reach"]:
                 parts.append(f"reach {k['reach']:,}")
             if k["watch_s"] is not None:
@@ -321,9 +327,10 @@ def _fmt_report(stats: dict) -> str:
                 parts.append(f"skip {k['skip_rate']:.0f}%")
             lines.append(f"  {k['account']} {emoji}: " + " | ".join(parts))
             best = k["best"]
-            link = (f"https://youtu.be/{best['post_id']}" if k["platform"] == "youtube"
-                    else f"post {best['post_id']}")
-            lines.append(f"    best: {best['views']:,} views, {link}")
+            if best["views"] is not None:
+                link = (f"https://youtu.be/{best['post_id']}" if k["platform"] == "youtube"
+                        else f"post {best['post_id']}")
+                lines.append(f"    best: {best['views']:,} views, {link}")
         lines.append("")
 
     # Best video all-time
