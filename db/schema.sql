@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS upload_schedule (
     drive_file_id   TEXT,
     engagement_views  INTEGER,
     engagement_likes  INTEGER,
+    engagement_json   TEXT,       -- every metric the platform returned, refreshed daily
+    engagement_updated_at DATETIME,
     platform_post_id  TEXT,
     caption_variant   TEXT CHECK(caption_variant IN ('A', 'B')),
     created_at      DATETIME DEFAULT (datetime('now'))

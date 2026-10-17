@@ -35,12 +35,26 @@ jobs:
           [ $fail -eq 1 ] && exit 1
           echo "All required secrets present"
 
-      - name: Write Drive credentials
+      # Engagement is read per account with the same credential files the uploads
+      # use (pipeline/engagement_tracker.py), so they are written here the same way.
+      - name: Write credentials files
         env:
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS }}
+          INSTAGRAM_CREDS_JSON: ${{ secrets.INSTAGRAM_CREDENTIALS }}
+          SKILLSTOTRAINEYES_IG_CREDS_JSON: ${{ secrets.SKILLSTOTRAINEYES_IG_CREDENTIALS }}
         run: |
           mkdir -p credentials
           echo "$GOOGLE_DRIVE_SA_JSON" > credentials/drive_service_account.json
+          if [ -n "$YOUTUBE_CREDS_JSON" ]; then
+            echo "$YOUTUBE_CREDS_JSON" > credentials/mythology_yt.json
+          fi
+          if [ -n "$INSTAGRAM_CREDS_JSON" ]; then
+            echo "$INSTAGRAM_CREDS_JSON" > credentials/all_niches_ig.json
+          fi
+          if [ -n "$SKILLSTOTRAINEYES_IG_CREDS_JSON" ]; then
+            echo "$SKILLSTOTRAINEYES_IG_CREDS_JSON" > credentials/skillstotraineyes_ig.json
+          fi
 
       - name: Fetch engagement and recalculate
         env:
@@ -51,9 +65,6 @@ jobs:
           GOOGLE_DRIVE_UPLOADED_ID: ${{ secrets.GOOGLE_DRIVE_UPLOADED_ID }}
           GOOGLE_DRIVE_FAILED_ID: ${{ secrets.GOOGLE_DRIVE_FAILED_ID }}
           GOOGLE_DRIVE_STATE_ID: ${{ secrets.GOOGLE_DRIVE_STATE_ID }}
-          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         run: python scripts/run_engagement_fetch.py
 
       - name: Notify failure

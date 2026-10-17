@@ -1,4 +1,5 @@
 """Tests for pipeline/engagement_tracker.py — mock all external calls."""
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,58 +21,206 @@ def make_db():
 
 
 # ---------------------------------------------------------------------------
-# test_fetch_engagement_updates_rows
+# fetch_engagement: per-account credentials, daily refresh, never zero a post
 # ---------------------------------------------------------------------------
 
-def test_fetch_engagement_updates_rows(monkeypatch):
-    """
-    Insert a done upload with platform_post_id, no engagement yet.
-    Mock the YouTube API request to return {"views": 1500, "likes": 45}.
-    Call fetch_engagement, assert count=1.
-    Verify DB row updated.
-    """
-    from pipeline.engagement_tracker import fetch_engagement
-
-    # Set env var so the fetcher doesn't early-exit
-    monkeypatch.setenv("GOOGLE_AI_STUDIO_API_KEY", "test-key")
-
-    conn = make_db()
-
-    # Insert a done upload with platform_post_id but no engagement
-    scheduled_at = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+def _insert(conn, platform="youtube", niche="mythology", status="done", post_id="p1",
+            hours_ago=24, views=None, likes=None):
+    scheduled_at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         """INSERT INTO upload_schedule
-           (platform, niche_id, scheduled_at, status, platform_post_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        ("youtube", "mythology", scheduled_at, "done", "test-video-123"),
+           (platform, niche_id, scheduled_at, status, platform_post_id, engagement_views, engagement_likes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (platform, niche, scheduled_at, status, post_id, views, likes),
     )
     conn.commit()
 
-    # Mock requests.get to return YouTube stats
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "items": [
-            {
-                "statistics": {
-                    "viewCount": "1500",
-                    "likeCount": "45",
-                }
-            }
-        ]
+
+@pytest.fixture
+def tracker(monkeypatch, tmp_path):
+    """engagement_tracker with credentials resolved to a temp file and fetchers stubbed per test."""
+    import pipeline.engagement_tracker as t
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+    monkeypatch.setattr(t, "_account_creds", lambda platform, niche_id: creds)
+    return t
+
+
+def _stub(monkeypatch, t, platform, result):
+    calls = []
+
+    def fetch(post_id, creds_path):
+        calls.append(post_id)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setitem(t._PLATFORM_FETCHERS, platform, fetch)
+    return calls
+
+
+def test_fetch_engagement_updates_rows(monkeypatch, tracker):
+    conn = make_db()
+    _insert(conn, post_id="test-video-123")
+    _stub(monkeypatch, tracker, "youtube", {"views": 1500, "likes": 45, "avg_view_percentage": 61.2})
+
+    assert tracker.fetch_engagement(conn, lookback_days=14) == 1
+
+    views, likes, blob, updated = conn.execute(
+        "SELECT engagement_views, engagement_likes, engagement_json, engagement_updated_at "
+        "FROM upload_schedule WHERE platform_post_id='test-video-123'").fetchone()
+    assert (views, likes) == (1500, 45)
+    assert json.loads(blob)["avg_view_percentage"] == 61.2
+    assert updated is not None
+
+
+def test_fetch_engagement_refreshes_already_fetched(monkeypatch, tracker):
+    # A Reel keeps collecting views for days; the first number must not be frozen.
+    conn = make_db()
+    _insert(conn, post_id="seen-before", views=2000, likes=100)
+    _stub(monkeypatch, tracker, "youtube", {"views": 2600, "likes": 130})
+
+    assert tracker.fetch_engagement(conn, lookback_days=14) == 1
+    assert conn.execute("SELECT engagement_views, engagement_likes FROM upload_schedule").fetchone() == (2600, 130)
+
+
+def test_fetch_engagement_skips_pending_and_old_uploads(monkeypatch, tracker):
+    conn = make_db()
+    _insert(conn, status="pending", post_id="pending-1")
+    _insert(conn, post_id="too-old", hours_ago=24 * 20)
+    calls = _stub(monkeypatch, tracker, "youtube", {"views": 1, "likes": 1})
+
+    assert tracker.fetch_engagement(conn, lookback_days=14) == 0
+    assert calls == []
+
+
+@pytest.mark.parametrize("result", [{}, RuntimeError("API down")])
+def test_fetch_engagement_handles_api_failure(monkeypatch, tracker, result):
+    conn = make_db()
+    _insert(conn, post_id="failed-fetch-123", views=500)
+    _stub(monkeypatch, tracker, "youtube", result)
+
+    assert tracker.fetch_engagement(conn, lookback_days=14) == 0
+    assert conn.execute("SELECT engagement_views FROM upload_schedule").fetchone() == (500,)
+
+
+def test_partial_stats_never_zero_known_views(monkeypatch, tracker):
+    # Without instagram_manage_insights only public likes/comments come back.
+    conn = make_db()
+    _insert(conn, platform="instagram", views=1200, likes=3)
+    _stub(monkeypatch, tracker, "instagram", {"likes": 9, "comments": 1})
+
+    assert tracker.fetch_engagement(conn, lookback_days=14) == 1
+    assert conn.execute("SELECT engagement_views, engagement_likes FROM upload_schedule").fetchone() == (1200, 9)
+
+
+def test_rows_read_with_their_own_accounts_credentials(monkeypatch):
+    # The eye niche posts to its exclusive account; reading it with the shared
+    # story token is what kept its views invisible.
+    import pipeline.engagement_tracker as t
+    import pipeline.social_accounts as sa
+    cfg = {
+        "platforms": {"instagram": {"enabled": True}},
+        "accounts": [
+            {"account_id": "all_ig", "platform": "instagram", "niche": "all", "enabled": True,
+             "credentials_file": "credentials/all.json"},
+            {"account_id": "eye_ig", "platform": "instagram", "niche": "skillstotraineyes",
+             "enabled": True, "exclusive": True, "credentials_file": "credentials/eye.json"},
+        ],
+    }
+    monkeypatch.setattr(sa, "load_social_config", lambda: cfg)
+    assert t._account_creds("instagram", "skillstotraineyes").name == "eye.json"
+    assert t._account_creds("instagram", "space_science").name == "all.json"
+    assert t._account_creds("youtube", "skillstotraineyes") is None
+
+
+# ---------------------------------------------------------------------------
+# Platform fetchers
+# ---------------------------------------------------------------------------
+
+def _resp(payload, ok=True):
+    r = MagicMock()
+    r.ok = ok
+    r.status_code = 200 if ok else 400
+    r.text = json.dumps(payload)
+    r.json.return_value = payload
+    return r
+
+
+def test_fetch_instagram_stats_reads_reel_insights(monkeypatch, tmp_path):
+    import pipeline.engagement_tracker as t
+    monkeypatch.setattr("pipeline.instagram_upload._load_credentials", lambda p: {"access_token": "T"})
+    responses = iter([
+        _resp({"error": {"message": "metric in development"}}, ok=False),   # full set rejected
+        _resp({"data": [{"name": "views", "values": [{"value": 2154}]},
+                        {"name": "reach", "values": [{"value": 1800}]},
+                        {"name": "likes", "values": [{"value": 30}]}]}),
+    ])
+    seen = []
+    monkeypatch.setattr(t.requests, "get", lambda url, params, timeout: seen.append(params["metric"]) or next(responses))
+
+    assert t._fetch_instagram_stats("m1", tmp_path / "c.json") == {"views": 2154, "reach": 1800, "likes": 30}
+    assert seen == list(t._IG_METRICS)
+
+
+def test_fetch_instagram_stats_falls_back_to_public_counts(monkeypatch, tmp_path):
+    import pipeline.engagement_tracker as t
+    monkeypatch.setattr("pipeline.instagram_upload._load_credentials", lambda p: {"access_token": "T"})
+    responses = iter([
+        _resp({"error": {"code": 10}}, ok=False),
+        _resp({"error": {"code": 10}}, ok=False),
+        _resp({"like_count": 30, "comments_count": 1}),
+    ])
+    monkeypatch.setattr(t.requests, "get", lambda url, params, timeout: next(responses))
+
+    assert t._fetch_instagram_stats("m1", tmp_path / "c.json") == {"likes": 30, "comments": 1}
+
+
+def test_fetch_facebook_stats_prefers_reel_plays(monkeypatch, tmp_path):
+    import pipeline.engagement_tracker as t
+    monkeypatch.setattr(t, "_fb_page_token", lambda creds_path: "PT")
+    responses = iter([
+        _resp({"views": 3, "likes": {"summary": {"total_count": 1}},
+               "comments": {"summary": {"total_count": 0}}}),
+        _resp({"data": [{"name": "blue_reels_play_count", "values": [{"value": 1200}]},
+                        {"name": "post_video_avg_time_watched", "values": [{"value": 9100}]}]}),
+    ])
+    monkeypatch.setattr(t.requests, "get", lambda url, params, timeout: next(responses))
+
+    assert t._fetch_facebook_stats("v1", tmp_path / "c.json") == {
+        "views": 1200, "likes": 1, "comments": 0,
+        "blue_reels_play_count": 1200, "post_video_avg_time_watched": 9100,
     }
 
-    with patch("pipeline.engagement_tracker.requests.get", return_value=mock_response):
-        count = fetch_engagement(conn, lookback_hours=48)
 
-    assert count == 1
+def test_fetch_facebook_stats_without_read_insights(monkeypatch, tmp_path):
+    import pipeline.engagement_tracker as t
+    monkeypatch.setattr(t, "_fb_page_token", lambda creds_path: "PT")
+    responses = iter([
+        _resp({"views": 7, "likes": {"summary": {"total_count": 2}},
+               "comments": {"summary": {"total_count": 0}}}),
+        _resp({"error": {"code": 10}}, ok=False),
+        _resp({"error": {"code": 10}}, ok=False),
+    ])
+    monkeypatch.setattr(t.requests, "get", lambda url, params, timeout: next(responses))
 
-    # Verify DB row was updated
-    row = conn.execute(
-        "SELECT engagement_views, engagement_likes FROM upload_schedule WHERE platform_post_id='test-video-123'"
-    ).fetchone()
-    assert row is not None
-    assert row[0] == 1500
-    assert row[1] == 45
+    assert t._fetch_facebook_stats("v1", tmp_path / "c.json") == {"views": 7, "likes": 2, "comments": 0}
+
+
+def test_fetch_youtube_stats(monkeypatch, tmp_path):
+    import pipeline.engagement_tracker as t
+    data_api, analytics = MagicMock(), MagicMock()
+    data_api.videos().list().execute.return_value = {"items": [{
+        "statistics": {"viewCount": "540", "likeCount": "18", "commentCount": "0"},
+        "snippet": {"publishedAt": "2026-09-20T09:56:05Z"},
+    }]}
+    analytics.reports().query().execute.return_value = {"rows": [[41.5, 48.9]]}
+    monkeypatch.setattr(t, "_youtube_services", lambda creds_path: (data_api, analytics))
+
+    assert t._fetch_youtube_stats("SCqGwqs5QPw", tmp_path / "c.json") == {
+        "views": 540, "likes": 18, "comments": 0,
+        "avg_view_duration_s": 41.5, "avg_view_percentage": 48.9,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -125,187 +274,6 @@ def test_recalculate_time_performance():
     assert abs(row[0] - expected_avg_views) < 0.1, f"Expected {expected_avg_views}, got {row[0]}"
     assert abs(row[1] - expected_avg_likes) < 0.1, f"Expected {expected_avg_likes}, got {row[1]}"
     assert row[2] == 5
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_engagement_skips_already_fetched
-# ---------------------------------------------------------------------------
-
-def test_fetch_engagement_skips_already_fetched():
-    """
-    Insert upload with engagement_views already set.
-    Call fetch_engagement.
-    Assert count=0, mock not called.
-    """
-    from pipeline.engagement_tracker import fetch_engagement
-
-    conn = make_db()
-
-    # Insert upload with engagement already fetched
-    scheduled_at = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        """INSERT INTO upload_schedule
-           (platform, niche_id, scheduled_at, status, platform_post_id, engagement_views, engagement_likes)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        ("youtube", "mythology", scheduled_at, "done", "already-fetched-123", 2000, 100),
-    )
-    conn.commit()
-
-    # Mock should not be called
-    with patch("pipeline.engagement_tracker._fetch_youtube_stats") as mock_fetch:
-        count = fetch_engagement(conn, lookback_hours=48)
-
-    assert count == 0
-    mock_fetch.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_engagement_skips_pending_uploads
-# ---------------------------------------------------------------------------
-
-def test_fetch_engagement_skips_pending_uploads():
-    """
-    Insert upload with status='pending' (not 'done').
-    Call fetch_engagement.
-    Assert count=0.
-    """
-    from pipeline.engagement_tracker import fetch_engagement
-
-    conn = make_db()
-
-    # Insert upload with status='pending'
-    scheduled_at = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        """INSERT INTO upload_schedule
-           (platform, niche_id, scheduled_at, status, platform_post_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        ("youtube", "mythology", scheduled_at, "pending", "pending-video-123"),
-    )
-    conn.commit()
-
-    with patch("pipeline.engagement_tracker._fetch_youtube_stats") as mock_fetch:
-        count = fetch_engagement(conn, lookback_hours=48)
-
-    assert count == 0
-    mock_fetch.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_engagement_handles_api_failure
-# ---------------------------------------------------------------------------
-
-def test_fetch_engagement_handles_api_failure():
-    """
-    Insert upload and mock fetcher to return empty dict (API failure).
-    Call fetch_engagement.
-    Assert count=0, no DB update.
-    """
-    from pipeline.engagement_tracker import fetch_engagement
-
-    conn = make_db()
-
-    scheduled_at = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        """INSERT INTO upload_schedule
-           (platform, niche_id, scheduled_at, status, platform_post_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        ("youtube", "mythology", scheduled_at, "done", "failed-fetch-123"),
-    )
-    conn.commit()
-
-    with patch("pipeline.engagement_tracker._fetch_youtube_stats") as mock_fetch:
-        mock_fetch.return_value = {}  # Simulate API failure
-
-        count = fetch_engagement(conn, lookback_hours=48)
-
-    assert count == 0
-
-    # Verify row was not updated
-    row = conn.execute(
-        "SELECT engagement_views FROM upload_schedule WHERE platform_post_id='failed-fetch-123'"
-    ).fetchone()
-    assert row[0] is None
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_instagram_stats
-# ---------------------------------------------------------------------------
-
-def test_fetch_instagram_stats(monkeypatch):
-    """Test _fetch_instagram_stats with mocked requests."""
-    from pipeline.engagement_tracker import _fetch_instagram_stats
-
-    monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "test-token")
-
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": [
-            {"name": "plays", "values": [{"value": 2500}]},
-            {"name": "likes", "values": [{"value": 75}]},
-        ]
-    }
-
-    with patch("pipeline.engagement_tracker.requests.get", return_value=mock_response):
-        result = _fetch_instagram_stats("media-123")
-
-    assert result == {"views": 2500, "likes": 75}
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_facebook_stats
-# ---------------------------------------------------------------------------
-
-def test_fetch_facebook_stats(monkeypatch):
-    """Test _fetch_facebook_stats with mocked requests."""
-    from pipeline.engagement_tracker import _fetch_facebook_stats
-
-    monkeypatch.setenv("FACEBOOK_PAGE_ACCESS_TOKEN", "test-token")
-
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "insights": {
-            "data": [
-                {
-                    "name": "post_video_views_organic",
-                    "values": [{"value": 3000}],
-                }
-            ]
-        },
-        "reactions": {"summary": {"total_count": 120}},
-    }
-
-    with patch("pipeline.engagement_tracker.requests.get", return_value=mock_response):
-        result = _fetch_facebook_stats("post-123")
-
-    assert result == {"views": 3000, "likes": 120}
-
-
-# ---------------------------------------------------------------------------
-# test_fetch_youtube_stats
-# ---------------------------------------------------------------------------
-
-def test_fetch_youtube_stats(monkeypatch):
-    """Test _fetch_youtube_stats with mocked requests."""
-    from pipeline.engagement_tracker import _fetch_youtube_stats
-
-    monkeypatch.setenv("GOOGLE_AI_STUDIO_API_KEY", "test-key")
-
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "items": [
-            {
-                "statistics": {
-                    "viewCount": "5000",
-                    "likeCount": "200",
-                }
-            }
-        ]
-    }
-
-    with patch("pipeline.engagement_tracker.requests.get", return_value=mock_response):
-        result = _fetch_youtube_stats("video-123")
-
-    assert result == {"views": 5000, "likes": 200}
 
 
 # ---------------------------------------------------------------------------

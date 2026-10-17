@@ -13,7 +13,8 @@ Prerequisites:
     1. Facebook App with Instagram Graph API enabled
     2. Instagram Business or Creator account linked to a Facebook Page
     3. Short-lived User Token from https://developers.facebook.com/tools/explorer/
-       with permissions: instagram_basic, instagram_content_publish, pages_read_engagement
+       with permissions: instagram_basic, instagram_content_publish, pages_read_engagement,
+       pages_manage_posts, instagram_manage_insights, read_insights
 """
 
 import json
@@ -135,6 +136,8 @@ def main() -> None:
         "       - instagram_content_publish\n"
         "       - pages_read_engagement\n"
         "       - pages_manage_posts    (needed for Facebook Page video uploads)\n"
+        "       - instagram_manage_insights (Reel views/reach/watch time, engagement tracking)\n"
+        "       - read_insights         (Facebook video/Reel views, engagement tracking)\n"
     )
 
     app_id = input("Facebook App ID: ").strip()

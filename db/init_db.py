@@ -17,6 +17,8 @@ _MIGRATIONS = [
     ("videos",      "retry_count",       "INTEGER DEFAULT 0"),
     ("videos",      "parent_video_id",   "INTEGER"),
     ("videos",      "rejection_feedback","TEXT"),
+    ("upload_schedule", "engagement_json",       "TEXT"),
+    ("upload_schedule", "engagement_updated_at", "DATETIME"),
 ]
 
 # DDL migrations: full SQL statements run with error swallowed if already applied.

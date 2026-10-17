@@ -102,6 +102,47 @@ def _rows(conn, sql, params=()):
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def _watch_seconds(m: dict) -> float | None:
+    """Average watch time in seconds: IG/FB report milliseconds, YouTube seconds."""
+    for key, scale in (("ig_reels_avg_watch_time", 1000), ("post_video_avg_time_watched", 1000),
+                       ("avg_view_duration_s", 1)):
+        if m.get(key) is not None:
+            return m[key] / scale
+    return None
+
+
+def _kpi_14d(conn: sqlite3.Connection) -> list[dict]:
+    """Per account+platform KPIs over the last 14 days of refreshed engagement."""
+    try:
+        rows = _rows(conn,
+            "SELECT niche_id, platform, platform_post_id, engagement_views, engagement_json "
+            "FROM upload_schedule WHERE status='done' AND engagement_json IS NOT NULL "
+            "AND scheduled_at >= datetime('now','-14 days')")
+    except sqlite3.OperationalError:  # DB not migrated yet by the engagement fetch
+        return []
+
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for r in rows:
+        account = "Skillstotraineyes" if r["niche_id"] == "skillstotraineyes" else "Story niches"
+        m = json.loads(r["engagement_json"])
+        m.update(views=r["engagement_views"] or 0, post_id=r["platform_post_id"], watch_s=_watch_seconds(m))
+        groups.setdefault((account, r["platform"]), []).append(m)
+
+    def avg(posts, key):
+        vals = [p[key] for p in posts if p.get(key) is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    return [{
+        "account": account, "platform": platform, "posts": len(posts),
+        "avg_views": avg(posts, "views"),
+        "reach": sum(p.get("reach") or 0 for p in posts),
+        "watch_s": avg(posts, "watch_s"),
+        "skip_rate": avg(posts, "reels_skip_rate"),
+        "view_pct": avg(posts, "avg_view_percentage"),
+        "best": max(posts, key=lambda p: p["views"]),
+    } for (account, platform), posts in sorted(groups.items())]
+
+
 def _gather_stats(conn: sqlite3.Connection) -> dict:
     uploads_by_platform = _rows(conn,
         "SELECT platform, COUNT(*) AS total_done FROM upload_schedule "
@@ -188,6 +229,7 @@ def _gather_stats(conn: sqlite3.Connection) -> dict:
         "uploads_30d": uploads_30d,
         "engagement_30d": engagement_30d,
         "best_30d": best_30d,
+        "kpi_14d": _kpi_14d(conn),
         "active_niches": active_niches,
         "hashtags": hashtags,
     }
@@ -262,6 +304,27 @@ def _fmt_report(stats: dict) -> str:
                 f"{int(r['views_30d'] or 0):,} views | avg {r['avg_views_30d']} views/post"
             )
     lines.append("")
+
+    # Per-account KPIs, re-read daily by the engagement fetch
+    if stats.get("kpi_14d"):
+        lines.append("<b>KPI (last 14 days)</b>")
+        for k in stats["kpi_14d"]:
+            emoji = _PLATFORM_EMOJI.get(k["platform"], "")
+            parts = [f"{k['posts']} posts", f"avg {k['avg_views']:,.0f} views"]
+            if k["reach"]:
+                parts.append(f"reach {k['reach']:,}")
+            if k["watch_s"] is not None:
+                parts.append(f"watch {k['watch_s']:.1f}s")
+            if k["view_pct"] is not None:
+                parts.append(f"viewed {k['view_pct']:.0f}%")
+            if k["skip_rate"] is not None:
+                parts.append(f"skip {k['skip_rate']:.0f}%")
+            lines.append(f"  {k['account']} {emoji}: " + " | ".join(parts))
+            best = k["best"]
+            link = (f"https://youtu.be/{best['post_id']}" if k["platform"] == "youtube"
+                    else f"post {best['post_id']}")
+            lines.append(f"    best: {best['views']:,} views, {link}")
+        lines.append("")
 
     # Best video all-time
     if stats["best_alltime"]:

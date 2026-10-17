@@ -16,6 +16,7 @@ log = logging.getLogger("engagement_fetch")
 
 
 def main():
+    from db.init_db import init_db
     from pipeline.drive_storage import download_from_drive, _build_service, _get_subfolder
     from pipeline.engagement_tracker import fetch_engagement, recalculate_time_performance
     from googleapiclient.http import MediaFileUpload
@@ -37,8 +38,9 @@ def main():
     db_path = Path(tempfile.mkdtemp()) / "schedule.db"
     download_from_drive(files[0]["id"], db_path)
 
+    init_db(str(db_path))  # adds engagement_json/engagement_updated_at to an older DB
     conn = sqlite3.connect(str(db_path))
-    updated = fetch_engagement(conn, lookback_hours=48)
+    updated = fetch_engagement(conn, lookback_days=14)
     recalculated = recalculate_time_performance(conn, lookback_days=30)
     conn.close()
 

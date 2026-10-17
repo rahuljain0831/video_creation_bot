@@ -15,6 +15,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
+    # Read access for pipeline/engagement_tracker.py: video stats and retention.
+    # The Analytics one also needs "YouTube Analytics API" enabled in the GCP project.
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
 
