@@ -36,13 +36,22 @@ def _ist_to_utc_hour(ist_time_str: str) -> int:
     return ist_dt.hour % 24
 
 
-def _slot_available(candidate: datetime, min_gap_minutes: int, conn, platform=None) -> bool:
+def _exclusive_niches() -> list[str]:
+    """Niches with their own account (social_config.json "exclusive"): own queue, own slots."""
+    from pipeline.social_accounts import load_social_config
+    return sorted({a["niche"] for a in load_social_config().get("accounts", [])
+                   if a.get("exclusive")})
+
+
+def _slot_available(candidate: datetime, min_gap_minutes: int, conn, platform=None, niche_id=None) -> bool:
     """
     Return True if no pending upload is within ±min_gap_minutes of candidate.
 
     platform=None keeps the original global check (any platform occupies the slot).
     Passing a platform scopes the check to that platform, which is what a batch
     schedule needs — otherwise 3 platforms × N videos starve each other out.
+    niche_id scopes it to one niche's queue: an exclusive account shares no
+    slots with the story backlog.
     """
     delta = timedelta(minutes=min_gap_minutes)
     low = (candidate - delta).strftime("%Y-%m-%d %H:%M:%S")
@@ -54,6 +63,9 @@ def _slot_available(candidate: datetime, min_gap_minutes: int, conn, platform=No
     if platform is not None:
         sql += " AND platform=?"
         params.append(platform)
+    if niche_id is not None:
+        sql += " AND niche_id=?"
+        params.append(niche_id)
 
     row = conn.execute(sql, params).fetchone()
     return row[0] == 0
@@ -131,8 +143,12 @@ def pick_optimal_time(
 
     now_utc = datetime.now(timezone.utc)
     batch_mode = on_date is not None
-    # In batch mode the slot check is per-platform; the legacy path stays global.
-    slot_platform = platform if batch_mode else None
+    # In batch mode the slot check is per-platform; the legacy path stays global,
+    # except for an exclusive account, which only competes with its own queue —
+    # the story backlog fills the same hours every day and pushed eye posts a day out.
+    own_queue = niche_id in _exclusive_niches()
+    slot_platform = platform if (batch_mode or own_queue) else None
+    slot_niche = niche_id if own_queue else None
 
     def _build(hour: int) -> datetime | None:
         """Materialise a candidate for `hour`, or None if it cannot be used."""
@@ -154,7 +170,7 @@ def pick_optimal_time(
     if not batch_mode and random.random() < exploration_rate:
         hour = random.randint(6, 22)
         candidate = _build(hour)
-        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform):
+        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform, slot_niche):
             return candidate
         # If slot taken during exploration, fall through to defaults
 
@@ -174,7 +190,7 @@ def pick_optimal_time(
     # Find first available slot
     for hour in candidate_hours:
         candidate = _build(hour)
-        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform):
+        if candidate is not None and _slot_available(candidate, min_gap, conn, slot_platform, slot_niche):
             return candidate
 
     if batch_mode:
@@ -202,9 +218,7 @@ def next_queue_slot(niche_id: str, platform: str, conn) -> datetime:
     """
     # An exclusive account (social_config.json) has its own queue: its niche
     # neither waits behind the shared backlog nor pushes the other niches back.
-    from pipeline.social_accounts import load_social_config
-    exclusive = sorted({a["niche"] for a in load_social_config().get("accounts", [])
-                        if a.get("exclusive")})
+    exclusive = _exclusive_niches()
     marks = ",".join("?" * len(exclusive))
     scope = (f"niche_id = ?" if niche_id in exclusive
              else f"niche_id NOT IN ({marks})" if exclusive else "1=1")

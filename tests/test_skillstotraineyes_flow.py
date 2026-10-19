@@ -383,3 +383,34 @@ def test_exclusive_niche_queue_ignores_shared_backlog():
     story = next_queue_slot("space_science", "instagram", c)
     c.execute("INSERT INTO upload_schedule VALUES ('skillstotraineyes','instagram','2099-06-01 10:00:00','pending')")
     assert next_queue_slot("space_science", "instagram", c) == story  # eye queue doesn't push stories
+
+
+def test_exclusive_niche_slot_ignores_story_backlog_at_same_hour(monkeypatch):
+    # The story backlog fills 11/13/15 UTC every day; the eye account's default
+    # hours collided with it and its Sunday post slid to Monday.
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    import pipeline.scheduler as sch
+    monkeypatch.setattr(sch, "_get_scheduler_config", lambda: {
+        "exploration_rate": 0, "min_gap_minutes": 30,
+        "default_times_ist": {"instagram": ["19:00", "21:00", "11:00"]}})   # -> 13, 15, 5 UTC
+    monkeypatch.setattr(sch, "_exclusive_niches", lambda: ["skillstotraineyes"])
+    c = sqlite3.connect(":memory:")
+    c.execute("CREATE TABLE upload_schedule (niche_id TEXT, platform TEXT, scheduled_at TEXT, status TEXT)")
+    c.execute("CREATE TABLE time_performance (niche_id TEXT, platform TEXT, hour_utc INT, day_of_week INT, avg_views REAL, sample_count INT)")
+    now = datetime.now(timezone.utc)
+    for h in (13, 15):   # the story slots, today and tomorrow, on the eye's own platform
+        for d in (0, 1):
+            at = (now + timedelta(days=d)).replace(hour=h, minute=0, second=0, microsecond=0)
+            c.execute("INSERT INTO upload_schedule VALUES ('space_science','instagram',?, 'pending')",
+                      (at.strftime("%Y-%m-%d %H:%M:%S"),))
+    eye = sch.pick_optimal_time("skillstotraineyes", "instagram", c)
+    assert eye.hour in (13, 15)                      # its normal hour, not pushed to hour 5
+    # a story niche still sees the occupied slot
+    c.execute("DELETE FROM upload_schedule WHERE niche_id!='space_science'")
+    story = sch.pick_optimal_time("space_science", "instagram", c)
+    assert story.hour not in (13, 15) or story.date() > now.date() + timedelta(days=1)
+    # and the eye's own pending post does block its own slot
+    c.execute("INSERT INTO upload_schedule VALUES ('skillstotraineyes','instagram',?, 'pending')",
+              (eye.strftime("%Y-%m-%d %H:%M:%S"),))
+    assert sch.pick_optimal_time("skillstotraineyes", "instagram", c) != eye
