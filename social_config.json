@@ -21,21 +21,21 @@
       "account_id": "mythology_yt",
       "platform": "youtube",
       "niche": "mythology",
-      "enabled": true,
+      "enabled": false,
       "credentials_file": "credentials/mythology_yt.json"
     },
     {
       "account_id": "all_niches_ig",
       "platform": "instagram",
       "niche": "all",
-      "enabled": true,
+      "enabled": false,
       "credentials_file": "credentials/all_niches_ig.json"
     },
     {
       "account_id": "all_niches_fb",
       "platform": "facebook",
       "niche": "all",
-      "enabled": true,
+      "enabled": false,
       "credentials_file": "credentials/all_niches_ig.json"
     },
     {
