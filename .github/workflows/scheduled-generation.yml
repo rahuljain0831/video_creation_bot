@@ -1,14 +1,8 @@
 name: Scheduled Video Generation
 
 on:
-  # One niche per run, rotating across the day. scary_stories is excluded —
-  # it needs the separate Remotion/Node toolchain (npm ci, Chrome headless
-  # shell), not covered by this workflow. mythology, heists, ai_tech_tools and
-  # finance_facts are disabled per settings.json (see CLAUDE.md for
-  # mythology's standing rule; ai/finance stopped 2026-10-17 on low views).
-  schedule:
-    - cron: '0 3 * * *'   # stock_market
-    - cron: '0 9 * * *'   # space_science
+  # Story-niche generation stopped 2026-10-24 (low views); only
+  # skillstotraineyes runs now. Manual dispatch only.
   workflow_dispatch:
     inputs:
       niche:
