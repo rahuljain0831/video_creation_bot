@@ -2,14 +2,24 @@ name: Drive Token Expiry Check
 
 on:
   schedule:
-    # Run daily at 06:00 UTC (11:30 IST)
-    - cron: '0 6 * * *'
-  workflow_dispatch: {}
+    # Every 6 hours. Once the token is within 2 days of expiry (or dead), each run
+    # starts the Telegram re-auth flow until a new token is saved.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Start re-auth even if the token is fresh"
+        type: boolean
+        default: false
+
+concurrency:
+  group: drive-token-check
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 70
 
     steps:
       - name: Checkout
@@ -21,18 +31,31 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install python-telegram-bot httpx
+        run: pip install google-auth google-auth-oauthlib requests python-dotenv
 
-      - name: Write token file
+      - name: Write token files
         env:
           DRIVE_OAUTH_TOKEN: ${{ secrets.DRIVE_OAUTH_TOKEN }}
+          DRIVE_OAUTH_CREDS: ${{ secrets.DRIVE_OAUTH_CREDENTIALS }}
         run: |
           if [ -n "$DRIVE_OAUTH_TOKEN" ]; then
             echo "$DRIVE_OAUTH_TOKEN" > drive_token.json
           fi
+          echo "$DRIVE_OAUTH_CREDS" > oauth_credentials.json
 
       - name: Check token expiry
+        id: check
+        run: python scripts/drive_token_check.py ${{ inputs.force && '--force' || '' }}
+
+      - name: Re-auth via Telegram
+        if: steps.check.outputs.needs_reauth == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/drive_token_check.py
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Fail before asking on Telegram if the new token could not be saved.
+          [ -z "$GH_TOKEN" ] && echo "::error::GH_PAT secret not set" && exit 1
+          python scripts/drive_reauth.py
+          gh secret set DRIVE_OAUTH_TOKEN < drive_token.json
+          echo "DRIVE_OAUTH_TOKEN secret updated"

@@ -32,7 +32,7 @@ TOKEN_PATH = ROOT / "drive_token.json"
 OAUTH_CREDS_PATH = ROOT / "oauth_credentials.json"
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 REDIRECT_URI = "http://localhost:8090/"
-POLL_TIMEOUT = 600
+POLL_TIMEOUT = 1800  # per reply; the 6-hourly check asks again if missed
 
 
 def _tg(method, **params):
@@ -154,7 +154,7 @@ def main():
     short = _shorten(auth_url)
 
     _send(
-        "\U0001f517 *Open this link and login:*\n\n"
+        "\U0001f517 *Open this link and login with resinscapers@gmail.com:*\n\n"
         f"{short}\n\n"
         "After login, page won't load.\n"
         "*Copy full URL* from browser bar and paste here."
@@ -182,14 +182,11 @@ def main():
     with open(TOKEN_PATH, "w") as f:
         json.dump(token_data, f, indent=2)
 
-    _send("\u2705 Drive OAuth token refreshed!")
+    _send("✅ Drive OAuth token refreshed!")
+    # Never print the token itself: in CI stdout is the public run log.
     print(f"\nToken saved to {TOKEN_PATH}")
-    print(f"\n{'='*60}")
-    print("Update GitHub secret DRIVE_OAUTH_TOKEN:")
-    print(f"{'='*60}")
-    print(json.dumps(token_data))
-    print(f"{'='*60}")
-    print("\nhttps://github.com/rahuljain0831/video_creation_bot/settings/secrets/actions")
+    if not os.getenv("GITHUB_ACTIONS"):
+        print("Update the GitHub secret:\n  gh secret set DRIVE_OAUTH_TOKEN < drive_token.json")
 
 
 if __name__ == "__main__":
