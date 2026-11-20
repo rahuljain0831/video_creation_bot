@@ -26,7 +26,7 @@ from skillstotraineyes.drills import ACCENTS, CX, CY, FPS, Drill, _text, _text_o
 
 # Side-on only. A tilt shows the top of the shape and the "seen from above" prior
 # then decides the direction; ring and cube need a tilt (or show edges), so they went.
-SHAPES = ("sphere", "cylinder", "helix")
+SHAPES = ("sphere", "helix")   # cylinder dropped by user review 2026-11-20
 SCHEMES = ("single", "rainbow", "split")
 HOOK_S, SPIN_S, HOLD_S = 3.0, 17.0, 4.0
 RADIUS_PX = 380                 # unit shape -> pixels; keeps y inside 520..1280
@@ -47,12 +47,6 @@ def shape_points(shape: str, n: int) -> np.ndarray:
         r = np.sqrt(1 - y * y)
         a = math.pi * (3 - math.sqrt(5)) * i
         return np.stack([r * np.cos(a), y, r * np.sin(a)], 1)
-    if shape == "cylinder":
-        rows = max(6, round(math.sqrt(n / 2)))
-        a, y = np.meshgrid(np.linspace(0, 2 * math.pi, n // rows, endpoint=False),
-                           np.linspace(-1, 1, rows))
-        a, y = a.ravel(), y.ravel()
-        return np.stack([0.7 * np.cos(a), y, 0.7 * np.sin(a)], 1)
     if shape == "helix":                                # two strands, two full turns
         t = np.linspace(0, 1, n // 2)
         a = 4 * math.pi * t
@@ -83,7 +77,9 @@ def spin_illusion(seed: int, text: dict | None = None, level: str | None = None,
     turns = rng.choice((3, 4, 5))               # whole turns in the spin window
     period = SPIN_S / turns                     # 5.67 / 4.25 / 3.4 s per turn
     outer = shape_points(shape, rng.randint(150, 350))
-    inner = INNER_SCALE * shape_points("sphere", INNER_N)
+    # Nested counter-spinning sphere only inside the sphere (user: not in the helix).
+    nested = shape == "sphere"
+    inner = INNER_SCALE * shape_points("sphere", INNER_N) if nested else np.zeros((0, 3))
     cols = _colours(scheme, outer, rng) + _colours(scheme, inner / INNER_SCALE, rng)
     pts = np.concatenate([outer, inner])
     spin = np.concatenate([np.ones(len(outer)), -np.ones(len(inner))])   # inner turns the other way
@@ -115,5 +111,5 @@ def spin_illusion(seed: int, text: dict | None = None, level: str | None = None,
 
     return Drill("spin_illusion", total, ops,
                  {"family": "spin_illusion", "level": "", "shape": shape, "scheme": scheme,
-                  "period": round(period, 2), "n": len(outer), "inner": "sphere"},
+                  "period": round(period, 2), "n": len(outer), "inner": "sphere" if nested else ""},
                  voice=[(0.3, INTRO), (t_q + 0.2, question)], level="")

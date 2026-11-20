@@ -6,7 +6,8 @@ Copy of the "reverse the spin with your mind" format (25.8M-view reel) as a cata
   order (no depth cue). Revision 2026-11-20 (user: "too easy"): tilt removed (it handed the
   "seen from above" prior the answer), ring/cube dropped, plus a nested sphere spinning the
   other way, per-dot brightness pulse, and speed drifting ±45% over 6s.
-- Per seed: shape (sphere/cylinder/helix), colour scheme (single/rainbow/split),
+- Review 2: cylinder dropped; nested sphere only inside the sphere, not the helix.
+- Per seed: shape (sphere/helix), colour scheme (single/rainbow/split),
   3-5 whole turns in 17s, 150-350 dots. No levels; catalog `no_level` + `badge: "BRAIN CHALLENGE"`.
 - Timeline: 0-3s badge + "Reverse the spin with your mind"; 3-20s spin; 20-24s
   "Which way did it spin for you? Comment LEFT or RIGHT" (on screen + voiced). No right answer.

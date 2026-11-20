@@ -466,7 +466,8 @@ medical claims.
 - `spin_illusion.py` — dot shape spinning ambiguously, "comment LEFT or RIGHT". No levels
   (`no_level` + catalog `badge`). Never depth-sort the dots, add perspective or tilt the axis:
   any depth cue kills the illusion (a 20° tilt made the direction obvious). Harder by design:
-  nested sphere spinning the other way, per-dot pulse, drifting speed.
+  nested counter-spinning sphere (sphere shape only), per-dot pulse, drifting speed.
+  Shapes: sphere, helix (cylinder/ring/cube rejected in review).
 - `renderer.py` — Pillow frames → ffmpeg `rawvideo` stdin (~40 ms/frame, ~15-20s per video).
   Circles are pasted from cached supersampled masks (anti-aliased without 4x per-frame cost).
   Text is wrapped to 880px and kept above y=1630 (Instagram's bottom UI band). Mixes bed +
