@@ -131,6 +131,13 @@
       "about": "One ball starts red, then turns white and every ball scatters. When they stop, each ball shows a number. Which number was the red ball? The answer is never shown; comment yours.",
       "builder": "number_track", "mode": "challenge",
       "knobs": {}, "knob_names": [], "presets": []
+    },
+    {
+      "id": "spin_illusion", "name": "Spin Illusion",
+      "about": "A shape made of dots spins, and it can look like it turns either way. Try to flip the direction with your mind, then comment LEFT or RIGHT for which way you saw it.",
+      "builder": "spin_illusion", "mode": "watch",
+      "knobs": {}, "knob_names": [], "presets": [],
+      "no_level": true, "badge": "BRAIN CHALLENGE"
     }
   ]
 }

@@ -821,9 +821,16 @@ def _number_track(*args, **kwargs) -> Drill:
     return number_track(*args, **kwargs)
 
 
+def _spin_illusion(*args, **kwargs) -> Drill:
+    # Late import: spin_illusion imports its helpers from this module.
+    from skillstotraineyes.spin_illusion import spin_illusion
+    return spin_illusion(*args, **kwargs)
+
+
 BUILDERS = {
     "colour_plates": _colour_plates,
     "number_track": _number_track,
+    "spin_illusion": _spin_illusion,
     "tracking": tracking,
     "pursuit_dual": pursuit_dual,
     "figure8": figure8,

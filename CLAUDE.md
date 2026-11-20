@@ -463,6 +463,9 @@ medical claims.
 - `number_track.py` — follow the red ball, balls stop numbered 1-8, "comment your number".
   Answer is **never shown** (only `params["answer"]`); levels medium/hard/expert, expert adds
   colour flashes (never RED). Ball numbers use the stroke-free `label` draw op.
+- `spin_illusion.py` — dot shape spinning ambiguously, "comment LEFT or RIGHT". No levels
+  (`no_level` + catalog `badge`). Never depth-sort the dots or add perspective: any depth cue
+  kills the illusion.
 - `renderer.py` — Pillow frames → ffmpeg `rawvideo` stdin (~40 ms/frame, ~15-20s per video).
   Circles are pasted from cached supersampled masks (anti-aliased without 4x per-frame cost).
   Text is wrapped to 880px and kept above y=1630 (Instagram's bottom UI band). Mixes bed +
