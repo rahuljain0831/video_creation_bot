@@ -18,8 +18,8 @@ def test_every_shape_has_points_inside_unit_box(shape):
     assert abs(pts).max() <= 1.0 + 1e-9
 
 
-def test_shapes_cover_all_five():
-    assert set(SHAPES) == {"sphere", "ring", "cylinder", "helix", "cube"}
+def test_side_on_shapes_only():
+    assert set(SHAPES) == {"sphere", "cylinder", "helix"}
 
 
 def test_deterministic_and_varies_by_seed():
@@ -34,11 +34,20 @@ def test_all_shapes_reachable():
 
 @pytest.mark.parametrize("seed", range(5))
 def test_no_depth_cues(seed):
-    """Same radius for every dot, and draw order never changes (no depth sort)."""
+    """Same radius for every dot; heights never change (side-on, no tilt)."""
     d = spin_illusion(seed)
     f0, f1 = _discs(d.ops(0)), _discs(d.ops(90))
     assert len({op[3] for op in f0}) == 1
-    assert [op[4] for op in f0] == [op[4] for op in f1]     # colours stay in index order
+    assert [op[2] for op in f0] == [op[2] for op in f1]     # fixed draw order, no tilt
+
+
+def test_nested_inner_spins_the_other_way_and_dots_pulse():
+    d = spin_illusion(1)
+    n = d.params["n"]
+    assert d.params["inner"] == "sphere"
+    f0, f1 = _discs(d.ops(0)), _discs(d.ops(1))
+    assert len(f0) == n + 120
+    assert [op[4] for op in f0] != [op[4] for op in _discs(d.ops(20))]   # pulse
 
 
 def test_period_and_dots_in_range():
