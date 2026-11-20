@@ -460,6 +460,9 @@ medical claims.
   ≥ 3 radii from every other ball at the reveal, so the answer is unambiguous.
   `pick_family()` never repeats the previous family; `too_close()` is the uniqueness gate
   (identical key params to a recent same-family drill → re-seed, up to 20 times).
+- `number_track.py` — follow the red ball, balls stop numbered 1-8, "comment your number".
+  Answer is **never shown** (only `params["answer"]`); levels medium/hard/expert, expert adds
+  colour flashes (never RED). Ball numbers use the stroke-free `label` draw op.
 - `renderer.py` — Pillow frames → ffmpeg `rawvideo` stdin (~40 ms/frame, ~15-20s per video).
   Circles are pasted from cached supersampled masks (anti-aliased without 4x per-frame cost).
   Text is wrapped to 880px and kept above y=1630 (Instagram's bottom UI band). Mixes bed +

@@ -146,6 +146,10 @@ def draw_frame(ops: list, base: Image.Image) -> Image.Image:
         elif kind == "image":
             _, x, y, im = op
             img.paste(im, (round(x - im.width / 2), round(y - im.height / 2)))
+        elif kind == "label":
+            # Short label on a ball: no wrap, no stroke (a stroke swallows small digits).
+            _, s, x, y, size, col = op
+            dr.text((x, y), s, font=_font(int(size)), fill=col, anchor="mm")
         elif kind == "text":
             _, s, x, y, size, col, *anchor = op
             font = _font(int(size))

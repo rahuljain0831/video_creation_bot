@@ -223,7 +223,7 @@ def main() -> None:
         family = pick_drill(seed, recent, cfg)
 
     recent_levels = [r["level"] for r in recent if r.get("level")]
-    if family == "tracking":
+    if family in ("tracking", "number_track"):
         # Medium-leaning, and a medium draw is never swapped for a preset (Swarm
         # and Bullet are god/expert), so the lean survives PRESET_CHANCE.
         level = args.level or pick_track_level(seed)

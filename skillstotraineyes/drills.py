@@ -12,6 +12,7 @@ Draw ops (all coordinates in the 1080x1920 frame):
     ("cross",  x, y, half, color, width)
     ("square", x, y, half, color)
     ("image",  x, y, pil_image)             pre-drawn RGB image, centred on x, y
+    ("label",  s, x, y, size, color)        short centred label, no wrap, no stroke
     ("text",   s, x, y, size, color[, "top"])  centred, wrapped by the renderer;
                                             "top" puts the first line at y and grows downward
 
@@ -814,8 +815,15 @@ def _colour_plates(*args, **kwargs) -> Drill:
     return colour_plates(*args, **kwargs)
 
 
+def _number_track(*args, **kwargs) -> Drill:
+    # Late import: number_track imports its helpers from this module.
+    from skillstotraineyes.number_track import number_track
+    return number_track(*args, **kwargs)
+
+
 BUILDERS = {
     "colour_plates": _colour_plates,
+    "number_track": _number_track,
     "tracking": tracking,
     "pursuit_dual": pursuit_dual,
     "figure8": figure8,

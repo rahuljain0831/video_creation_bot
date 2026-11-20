@@ -117,7 +117,7 @@ def spy(monkeypatch):
 
 def test_every_catalog_knob_is_in_the_derived_table():
     for e in load_catalog():
-        if e["id"] not in ("pursuit_dual", "figure8", "colour_plates"):
+        if e["id"] not in ("pursuit_dual", "figure8", "colour_plates", "number_track"):
             assert set(knob_names(e["id"])) <= set(DERIVED[e["id"]]), e["id"]
 
 

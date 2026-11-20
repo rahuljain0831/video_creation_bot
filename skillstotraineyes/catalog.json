@@ -125,6 +125,12 @@
       "about": "Plates of coloured dots, each hiding a number. Some are tuned so certain colour-blind eyes cannot see the number. Count how many you can read. A fun check, not a medical test.",
       "builder": "colour_plates", "mode": "challenge",
       "knobs": {}, "knob_names": [], "presets": []
+    },
+    {
+      "id": "number_track", "name": "Number Track",
+      "about": "One ball starts red, then turns white and every ball scatters. When they stop, each ball shows a number. Which number was the red ball? The answer is never shown; comment yours.",
+      "builder": "number_track", "mode": "challenge",
+      "knobs": {}, "knob_names": [], "presets": []
     }
   ]
 }
