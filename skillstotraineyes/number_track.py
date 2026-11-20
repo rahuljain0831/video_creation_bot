@@ -27,7 +27,9 @@ NUMBER_LOCKED = {
 }
 _LEVEL_MAP = {"easy": "medium", "god": "expert"}
 SPEED_BOOST = 1.8
-STILL_S, RED_MOVE_S, HOLD_S = 2.0, 3.0, 2.5
+# HOLD_S must outlast the spoken question (~3.05s, starting 0.2s after the stop),
+# or the voice is cut mid-line: 2.5s dropped "Comment below".
+STILL_S, RED_MOVE_S, HOLD_S = 2.0, 3.0, 4.0
 FLASHES, FLASH_S = 3, 0.4
 MIN_GAP = 2.2                      # target clear of every other ball by this many radii
 QUESTION = "Which number was it? Comment below!"   # no emoji: the video font has none
