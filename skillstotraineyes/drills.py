@@ -827,8 +827,15 @@ def _spin_illusion(*args, **kwargs) -> Drill:
     return spin_illusion(*args, **kwargs)
 
 
+def _shrink_focus(*args, **kwargs) -> Drill:
+    # Late import: shrink_focus imports its helpers from this module.
+    from skillstotraineyes.shrink_focus import shrink_focus
+    return shrink_focus(*args, **kwargs)
+
+
 BUILDERS = {
     "colour_plates": _colour_plates,
+    "shrink_focus": _shrink_focus,
     "number_track": _number_track,
     "spin_illusion": _spin_illusion,
     "tracking": tracking,

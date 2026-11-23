@@ -138,6 +138,13 @@
       "builder": "spin_illusion", "mode": "watch",
       "knobs": {}, "knob_names": [], "presets": [],
       "no_level": true, "badge": "BRAIN CHALLENGE"
+    },
+    {
+      "id": "shrink_focus", "name": "Shrink Focus",
+      "about": "A circle shrinks and fades while a counter climbs from 1 to 100. Remember the number where it disappeared for you and comment it. A fun focus challenge, not a test.",
+      "builder": "shrink_focus", "mode": "challenge",
+      "knobs": {}, "knob_names": [], "presets": [],
+      "no_level": true, "badge": "FOCUS CHALLENGE"
     }
   ]
 }

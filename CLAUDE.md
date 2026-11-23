@@ -468,6 +468,8 @@ medical claims.
   any depth cue kills the illusion (a 20° tilt made the direction obvious). Harder by design:
   nested counter-spinning sphere (sphere shape only), per-dot pulse, drifting speed.
   Shapes: sphere, helix (cylinder/ring/cube rejected in review).
+- `shrink_focus.py` — circle shrinks + fades while a counter climbs 1-100, "comment your
+  number". A score, never a "vision age" (medical-claim rule). Fade is what spreads answers.
 - `renderer.py` — Pillow frames → ffmpeg `rawvideo` stdin (~40 ms/frame, ~15-20s per video).
   Circles are pasted from cached supersampled masks (anti-aliased without 4x per-frame cost).
   Text is wrapped to 880px and kept above y=1630 (Instagram's bottom UI band). Mixes bed +
